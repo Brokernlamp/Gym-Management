@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,41 +57,25 @@ export default function Financial() {
     { month: "Oct", revenue: 324000, expenses: 195000 },
   ];
 
-  //todo: remove mock functionality
-  const pendingPayments = [
-    {
-      id: "1",
-      memberName: "Rajesh Kumar",
-      amount: 5000,
-      dueDate: new Date(2025, 10, 5),
-      status: "pending" as const,
-      planName: "Premium Annual",
-    },
-    {
-      id: "2",
-      memberName: "Priya Sharma",
-      amount: 3000,
-      dueDate: new Date(2025, 9, 28),
-      status: "overdue" as const,
-      planName: "Basic Monthly",
-    },
-    {
-      id: "3",
-      memberName: "Amit Patel",
-      amount: 4500,
-      dueDate: new Date(2025, 10, 8),
-      status: "pending" as const,
-      planName: "Premium Quarterly",
-    },
-    {
-      id: "4",
-      memberName: "Sneha Reddy",
-      amount: 2500,
-      dueDate: new Date(2025, 10, 10),
-      status: "pending" as const,
-      planName: "Basic Monthly",
-    },
-  ];
+  const { data: payments = [] } = useQuery({
+    queryKey: ["/api/payments"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+  const { data: members = [] } = useQuery({
+    queryKey: ["/api/members"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+  const memberById = new Map(members.map((m: any) => [m.id, m] as const));
+  const pendingPayments = payments
+    .filter((p: any) => p.status === "pending" || p.status === "overdue")
+    .map((p: any) => ({
+      id: p.id,
+      memberName: memberById.get(p.memberId)?.name ?? p.memberId,
+      amount: Number(p.amount ?? 0),
+      dueDate: p.dueDate ? new Date(p.dueDate) : undefined,
+      status: p.status,
+      planName: p.planName ?? undefined,
+    }));
 
   //todo: remove mock functionality
   const recentTransactions = [

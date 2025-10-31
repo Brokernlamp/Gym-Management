@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import { MemberCard } from "@/components/member-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,49 +18,10 @@ export default function Members() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  //todo: remove mock functionality
-  const members = [
-    {
-      id: "1",
-      name: "Rajesh Kumar",
-      photoUrl: undefined,
-      planName: "Premium Annual",
-      expiryDate: new Date(2026, 2, 15),
-      status: "active" as const,
-      paymentStatus: "paid" as const,
-      lastCheckIn: new Date(2025, 9, 30),
-    },
-    {
-      id: "2",
-      name: "Priya Sharma",
-      photoUrl: undefined,
-      planName: "Basic Monthly",
-      expiryDate: new Date(2025, 10, 5),
-      status: "active" as const,
-      paymentStatus: "pending" as const,
-      lastCheckIn: new Date(2025, 9, 29),
-    },
-    {
-      id: "3",
-      name: "Amit Patel",
-      photoUrl: undefined,
-      planName: "Premium Quarterly",
-      expiryDate: new Date(2025, 9, 25),
-      status: "expired" as const,
-      paymentStatus: "overdue" as const,
-      lastCheckIn: new Date(2025, 9, 20),
-    },
-    {
-      id: "4",
-      name: "Sneha Reddy",
-      photoUrl: undefined,
-      planName: "Basic Monthly",
-      expiryDate: new Date(2025, 11, 1),
-      status: "frozen" as const,
-      paymentStatus: "paid" as const,
-      lastCheckIn: new Date(2025, 9, 15),
-    },
-  ];
+  const { data: members = [] } = useQuery({
+    queryKey: ["/api/members"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
 
   const filteredMembers = members.filter((member) => {
     const matchesSearch = member.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -67,10 +30,10 @@ export default function Members() {
   });
 
   const stats = {
-    active: members.filter((m) => m.status === "active").length,
-    expiringThisWeek: 15,
-    expired: members.filter((m) => m.status === "expired").length,
-    paymentPending: members.filter((m) => m.paymentStatus === "pending" || m.paymentStatus === "overdue").length,
+    active: members.filter((m: any) => m.status === "active").length,
+    expiringThisWeek: 0,
+    expired: members.filter((m: any) => m.status === "expired").length,
+    paymentPending: members.filter((m: any) => m.paymentStatus === "pending" || m.paymentStatus === "overdue").length,
   };
 
   return (
@@ -147,10 +110,17 @@ export default function Members() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredMembers.map((member) => (
+        {filteredMembers.map((member: any) => (
           <MemberCard
             key={member.id}
-            {...member}
+            id={member.id}
+            name={member.name}
+            photoUrl={member.photoUrl}
+            planName={member.planName}
+            expiryDate={member.expiryDate ? new Date(member.expiryDate) : undefined}
+            status={member.status}
+            paymentStatus={member.paymentStatus}
+            lastCheckIn={member.lastCheckIn ? new Date(member.lastCheckIn) : undefined}
             onViewProfile={(id) => console.log("View profile:", id)}
             onSendReminder={(id) => console.log("Send reminder:", id)}
             onFreeze={(id) => console.log("Freeze:", id)}

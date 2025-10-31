@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,44 +62,28 @@ export default function Attendance() {
     { day: "Sun", checkIns: 165 },
   ];
 
-  //todo: remove mock functionality
-  const todayCheckIns = [
-    {
-      id: "1",
-      name: "Rajesh Kumar",
-      photoUrl: undefined,
-      checkInTime: new Date(2025, 9, 31, 6, 15),
-      checkOutTime: new Date(2025, 9, 31, 7, 45),
-    },
-    {
-      id: "2",
-      name: "Priya Sharma",
-      photoUrl: undefined,
-      checkInTime: new Date(2025, 9, 31, 7, 30),
-      checkOutTime: undefined,
-    },
-    {
-      id: "3",
-      name: "Amit Patel",
-      photoUrl: undefined,
-      checkInTime: new Date(2025, 9, 31, 8, 45),
-      checkOutTime: undefined,
-    },
-    {
-      id: "4",
-      name: "Sneha Reddy",
-      photoUrl: undefined,
-      checkInTime: new Date(2025, 9, 31, 9, 0),
-      checkOutTime: undefined,
-    },
-    {
-      id: "5",
-      name: "Vikram Singh",
-      photoUrl: undefined,
-      checkInTime: new Date(2025, 9, 31, 9, 30),
-      checkOutTime: undefined,
-    },
-  ];
+  const { data: attendance = [] } = useQuery({
+    queryKey: ["/api/attendance"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+  const { data: members = [] } = useQuery({
+    queryKey: ["/api/members"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+  const memberById = new Map(members.map((m: any) => [m.id, m] as const));
+  const today = new Date().toDateString();
+  const todayCheckIns = attendance
+    .filter((a: any) => new Date(a.checkInTime).toDateString() === today)
+    .map((a: any) => {
+      const m = memberById.get(a.memberId);
+      return {
+        id: a.id,
+        name: m?.name ?? a.memberId,
+        photoUrl: m?.photoUrl,
+        checkInTime: new Date(a.checkInTime),
+        checkOutTime: a.checkOutTime ? new Date(a.checkOutTime) : undefined,
+      };
+    });
 
   //todo: remove mock functionality
   const memberFrequency = [

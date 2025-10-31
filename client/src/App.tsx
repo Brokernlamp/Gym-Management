@@ -1,5 +1,7 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
+import { useEffect } from "react";
+import { useRealtimeInvalidation } from "./lib/realtime";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -40,6 +42,13 @@ function Router() {
   );
 }
 
+function RealtimeBridge() {
+  useEffect(() => {
+    useRealtimeInvalidation(queryClient);
+  }, []);
+  return null;
+}
+
 export default function App() {
   const style = {
     "--sidebar-width": "16rem",
@@ -48,6 +57,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <RealtimeBridge />
       <ThemeProvider>
         <TooltipProvider>
           <SidebarProvider style={style as React.CSSProperties}>
