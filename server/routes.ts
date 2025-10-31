@@ -127,7 +127,6 @@ app.patch("/api/attendance/:id", async (req: Request, res: Response) => {
 app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 		const ok = await storage.deleteAttendance(req.params.id);
 		if (!ok) return res.status(404).json({ message: "Not found" });
-		events.publish("attendance.deleted", { id: req.params.id });
 		return res.status(204).end();
 	});
 
@@ -152,8 +151,4 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 			return res.status(500).json({ ok: false, message: e?.message ?? "DB error" });
 		}
 	});
-
-	const httpServer = createServer(app);
-
-	return httpServer;
 }
