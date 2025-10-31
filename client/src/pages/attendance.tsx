@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getQueryFn } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,17 @@ export default function Attendance() {
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+  const manualCheckin = useMutation({
+    mutationFn: async () => {
+      const memberId = window.prompt("Member ID to check in?")?.trim();
+      if (!memberId) return;
+      await apiRequest("POST", "/api/attendance", { memberId, markedVia: "manual" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+    },
+  });
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
   const today = new Date().toDateString();
   const todayCheckIns = attendance
@@ -121,7 +132,7 @@ export default function Attendance() {
           <h1 className="text-3xl font-bold">Attendance & Check-In</h1>
           <p className="text-muted-foreground">Monitor member attendance and activity</p>
         </div>
-        <Button data-testid="button-manual-checkin">
+        <Button data-testid="button-manual-checkin" onClick={() => manualCheckin.mutate()}>
           <LogIn className="h-4 w-4 mr-2" />
           Manual Check-In
         </Button>

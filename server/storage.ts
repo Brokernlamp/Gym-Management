@@ -11,6 +11,7 @@ import {
   type InsertAttendance,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { getDb } from "./db";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -47,137 +48,253 @@ export interface IStorage {
   deleteAttendance(id: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private members: Map<string, Member>;
-  private payments: Map<string, Payment>;
-  private equipments: Map<string, Equipment>;
-  private attendance: Map<string, Attendance>;
-
-  constructor() {
-    this.users = new Map();
-    this.members = new Map();
-    this.payments = new Map();
-    this.equipments = new Map();
-    this.attendance = new Map();
-  }
+export class TursoStorage implements IStorage {
+  private db = getDb();
 
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const r = await this.db.execute({ sql: `SELECT id, username, password FROM users WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const r = await this.db.execute({ sql: `SELECT id, username, password FROM users WHERE username = ?`, args: [username] });
+    return r.rows[0] as any;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(user: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    await this.db.execute({ sql: `INSERT INTO users (id, username, password) VALUES (?, ?, ?)`, args: [id, user.username, user.password] });
+    return { id, username: user.username, password: user.password } as any;
   }
 
-  // members
   async listMembers(): Promise<Member[]> {
-    return Array.from(this.members.values());
+    const r = await this.db.execute(`SELECT * FROM members ORDER BY name`);
+    return r.rows as any;
   }
 
   async getMember(id: string): Promise<Member | undefined> {
-    return this.members.get(id);
+    const r = await this.db.execute({ sql: `SELECT * FROM members WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async createMember(member: InsertMember): Promise<Member> {
     const id = randomUUID();
-    const created: Member = { ...member, id } as Member;
-    this.members.set(id, created);
-    return created;
+    await this.db.execute({
+      sql: `INSERT INTO members (
+        id, name, email, phone, photo_url, login_code, plan_id, plan_name,
+        start_date, expiry_date, status, payment_status, last_check_in,
+        emergency_contact, trainer_id, notes, gender, age
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        member.name,
+        member.email,
+        member.phone,
+        (member as any).photoUrl ?? null,
+        member.loginCode,
+        (member as any).planId ?? null,
+        (member as any).planName ?? null,
+        (member as any).startDate ?? null,
+        (member as any).expiryDate ?? null,
+        member.status,
+        (member as any).paymentStatus,
+        (member as any).lastCheckIn ?? null,
+        (member as any).emergencyContact ?? null,
+        (member as any).trainerId ?? null,
+        (member as any).notes ?? null,
+        (member as any).gender ?? null,
+        (member as any).age ?? null,
+      ],
+    });
+    const created = await this.getMember(id);
+    return created as Member;
   }
 
   async updateMember(id: string, member: Partial<InsertMember>): Promise<Member | undefined> {
-    const current = this.members.get(id);
+    const current = await this.getMember(id);
     if (!current) return undefined;
-    const updated: Member = { ...current, ...member } as Member;
-    this.members.set(id, updated);
-    return updated;
+    const updated = { ...current, ...member } as any;
+    await this.db.execute({
+      sql: `UPDATE members SET name=?, email=?, phone=?, photo_url=?, login_code=?, plan_id=?, plan_name=?, start_date=?, expiry_date=?, status=?, payment_status=?, last_check_in=?, emergency_contact=?, trainer_id=?, notes=?, gender=?, age=? WHERE id=?`,
+      args: [
+        updated.name,
+        updated.email,
+        updated.phone,
+        updated.photoUrl ?? null,
+        updated.loginCode,
+        updated.planId ?? null,
+        updated.planName ?? null,
+        updated.startDate ?? null,
+        updated.expiryDate ?? null,
+        updated.status,
+        updated.paymentStatus,
+        updated.lastCheckIn ?? null,
+        updated.emergencyContact ?? null,
+        updated.trainerId ?? null,
+        updated.notes ?? null,
+        updated.gender ?? null,
+        updated.age ?? null,
+        id,
+      ],
+    });
+    return await this.getMember(id);
   }
 
   async deleteMember(id: string): Promise<boolean> {
-    return this.members.delete(id);
+    const r = await this.db.execute({ sql: `DELETE FROM members WHERE id = ?`, args: [id] });
+    return (r.rowsAffected ?? 0) > 0;
   }
 
-  // payments
   async listPayments(): Promise<Payment[]> {
-    return Array.from(this.payments.values());
+    const r = await this.db.execute(`SELECT * FROM payments ORDER BY COALESCE(paid_date, due_date) DESC`);
+    return r.rows as any;
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
     const id = randomUUID();
-    const created: Payment = { ...payment, id } as Payment;
-    this.payments.set(id, created);
-    return created;
+    await this.db.execute({
+      sql: `INSERT INTO payments (id, member_id, amount, payment_method, status, due_date, paid_date, plan_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        payment.memberId,
+        String((payment as any).amount ?? "0"),
+        (payment as any).paymentMethod,
+        (payment as any).status,
+        (payment as any).dueDate ?? null,
+        (payment as any).paidDate ?? null,
+        (payment as any).planName ?? null,
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM payments WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined> {
-    const current = this.payments.get(id);
-    if (!current) return undefined;
-    const updated: Payment = { ...current, ...payment } as Payment;
-    this.payments.set(id, updated);
-    return updated;
+    const current = await this.db.execute({ sql: `SELECT * FROM payments WHERE id = ?`, args: [id] });
+    const cur = current.rows[0] as any;
+    if (!cur) return undefined;
+    const updated = { ...cur, ...payment } as any;
+    await this.db.execute({
+      sql: `UPDATE payments SET member_id=?, amount=?, payment_method=?, status=?, due_date=?, paid_date=?, plan_name=? WHERE id=?`,
+      args: [
+        updated.memberId,
+        String(updated.amount ?? "0"),
+        updated.paymentMethod,
+        updated.status,
+        updated.dueDate ?? null,
+        updated.paidDate ?? null,
+        updated.planName ?? null,
+        id,
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM payments WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async deletePayment(id: string): Promise<boolean> {
-    return this.payments.delete(id);
+    const r = await this.db.execute({ sql: `DELETE FROM payments WHERE id = ?`, args: [id] });
+    return (r.rowsAffected ?? 0) > 0;
   }
 
-  // equipment
   async listEquipment(): Promise<Equipment[]> {
-    return Array.from(this.equipments.values());
+    const r = await this.db.execute(`SELECT * FROM equipment ORDER BY name`);
+    return r.rows as any;
   }
 
   async createEquipment(equipment: InsertEquipment): Promise<Equipment> {
     const id = randomUUID();
-    const created: Equipment = { ...equipment, id } as Equipment;
-    this.equipments.set(id, created);
-    return created;
+    await this.db.execute({
+      sql: `INSERT INTO equipment (id, name, category, purchase_date, warranty_expiry, last_maintenance, next_maintenance, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        equipment.name,
+        (equipment as any).category,
+        (equipment as any).purchaseDate ?? null,
+        (equipment as any).warrantyExpiry ?? null,
+        (equipment as any).lastMaintenance ?? null,
+        (equipment as any).nextMaintenance ?? null,
+        (equipment as any).status,
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async updateEquipment(id: string, equipment: Partial<InsertEquipment>): Promise<Equipment | undefined> {
-    const current = this.equipments.get(id);
-    if (!current) return undefined;
-    const updated: Equipment = { ...current, ...equipment } as Equipment;
-    this.equipments.set(id, updated);
-    return updated;
+    const current = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
+    const cur = current.rows[0] as any;
+    if (!cur) return undefined;
+    const updated = { ...cur, ...equipment } as any;
+    await this.db.execute({
+      sql: `UPDATE equipment SET name=?, category=?, purchase_date=?, warranty_expiry=?, last_maintenance=?, next_maintenance=?, status=? WHERE id=?`,
+      args: [
+        updated.name,
+        updated.category,
+        updated.purchaseDate ?? null,
+        updated.warrantyExpiry ?? null,
+        updated.lastMaintenance ?? null,
+        updated.nextMaintenance ?? null,
+        updated.status,
+        id,
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async deleteEquipment(id: string): Promise<boolean> {
-    return this.equipments.delete(id);
+    const r = await this.db.execute({ sql: `DELETE FROM equipment WHERE id = ?`, args: [id] });
+    return (r.rowsAffected ?? 0) > 0;
   }
 
-  // attendance
   async listAttendance(): Promise<Attendance[]> {
-    return Array.from(this.attendance.values());
+    const r = await this.db.execute(`SELECT * FROM attendance ORDER BY COALESCE(check_out_time, check_in_time) DESC`);
+    return r.rows as any;
   }
 
   async createAttendance(record: InsertAttendance): Promise<Attendance> {
     const id = randomUUID();
-    const created: Attendance = { ...record, id } as Attendance;
-    this.attendance.set(id, created);
-    return created;
+    await this.db.execute({
+      sql: `INSERT INTO attendance (id, member_id, check_in_time, check_out_time, latitude, longitude, marked_via) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        record.memberId,
+        (record as any).checkInTime ?? new Date().toISOString(),
+        (record as any).checkOutTime ?? null,
+        (record as any).latitude ?? null,
+        (record as any).longitude ?? null,
+        (record as any).markedVia ?? "manual",
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM attendance WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async updateAttendance(id: string, record: Partial<InsertAttendance>): Promise<Attendance | undefined> {
-    const current = this.attendance.get(id);
-    if (!current) return undefined;
-    const updated: Attendance = { ...current, ...record } as Attendance;
-    this.attendance.set(id, updated);
-    return updated;
+    const current = await this.db.execute({ sql: `SELECT * FROM attendance WHERE id = ?`, args: [id] });
+    const cur = current.rows[0] as any;
+    if (!cur) return undefined;
+    const updated = { ...cur, ...record } as any;
+    await this.db.execute({
+      sql: `UPDATE attendance SET member_id=?, check_in_time=?, check_out_time=?, latitude=?, longitude=?, marked_via=? WHERE id=?`,
+      args: [
+        updated.memberId,
+        updated.checkInTime ?? cur.check_in_time,
+        updated.checkOutTime ?? null,
+        updated.latitude ?? null,
+        updated.longitude ?? null,
+        updated.markedVia ?? cur.marked_via,
+        id,
+      ],
+    });
+    const r = await this.db.execute({ sql: `SELECT * FROM attendance WHERE id = ?`, args: [id] });
+    return r.rows[0] as any;
   }
 
   async deleteAttendance(id: string): Promise<boolean> {
-    return this.attendance.delete(id);
+    const r = await this.db.execute({ sql: `DELETE FROM attendance WHERE id = ?`, args: [id] });
+    return (r.rowsAffected ?? 0) > 0;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new TursoStorage();

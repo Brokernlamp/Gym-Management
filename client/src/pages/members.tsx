@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getQueryFn } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 import { MemberCard } from "@/components/member-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,26 @@ export default function Members() {
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
+  const createMember = useMutation({
+    mutationFn: async () => {
+      const name = window.prompt("Member name")?.trim();
+      const email = window.prompt("Email")?.trim();
+      const phone = window.prompt("Phone")?.trim();
+      if (!name || !email || !phone) return;
+      await apiRequest("POST", "/api/members", {
+        name,
+        email,
+        phone,
+        loginCode: String(Math.floor(Math.random() * 900000) + 100000),
+        status: "active",
+        paymentStatus: "paid",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+    },
+  });
+
   const filteredMembers = members.filter((member) => {
     const matchesSearch = member.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || member.status === statusFilter;
@@ -43,7 +63,7 @@ export default function Members() {
           <h1 className="text-3xl font-bold">Members</h1>
           <p className="text-muted-foreground">Manage your gym members</p>
         </div>
-        <Button data-testid="button-add-member">
+        <Button data-testid="button-add-member" onClick={() => createMember.mutate()}>
           <UserPlus className="h-4 w-4 mr-2" />
           Add Member
         </Button>

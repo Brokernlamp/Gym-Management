@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getQueryFn } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +60,23 @@ export default function Financial() {
   const { data: payments = [] } = useQuery({
     queryKey: ["/api/payments"],
     queryFn: getQueryFn({ on401: "throw" }),
+  });
+  const processPayment = useMutation({
+    mutationFn: async () => {
+      const memberId = window.prompt("Member ID for payment?")?.trim();
+      const amount = window.prompt("Amount?")?.trim();
+      if (!memberId || !amount) return;
+      await apiRequest("POST", "/api/payments", {
+        memberId,
+        amount,
+        paymentMethod: "cash",
+        status: "paid",
+        paidDate: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    },
   });
   const { data: members = [] } = useQuery({
     queryKey: ["/api/members"],
@@ -123,7 +140,7 @@ export default function Financial() {
             <Download className="h-4 w-4 mr-2" />
             Export Report
           </Button>
-          <Button data-testid="button-process-payment">
+          <Button data-testid="button-process-payment" onClick={() => processPayment.mutate()}>
             <Plus className="h-4 w-4 mr-2" />
             Process Payment
           </Button>
