@@ -52,22 +52,23 @@ export class TursoStorage implements IStorage {
   private db = getDb();
 
   private mapMember(row: any): Member {
+    // Handle both snake_case (DB) and camelCase (already mapped) formats
     return {
       id: row.id,
       name: row.name,
       email: row.email,
       phone: row.phone,
-      photoUrl: row.photo_url ?? null,
-      loginCode: row.login_code,
-      planId: row.plan_id ?? null,
-      planName: row.plan_name ?? null,
-      startDate: row.start_date ?? null,
-      expiryDate: row.expiry_date ?? null,
+      photoUrl: row.photo_url ?? row.photoUrl ?? null,
+      loginCode: row.login_code ?? row.loginCode,
+      planId: row.plan_id ?? row.planId ?? null,
+      planName: row.plan_name ?? row.planName ?? null,
+      startDate: row.start_date ?? row.startDate ?? null,
+      expiryDate: row.expiry_date ?? row.expiryDate ?? null,
       status: row.status,
-      paymentStatus: row.payment_status,
-      lastCheckIn: row.last_check_in ?? null,
-      emergencyContact: row.emergency_contact ?? null,
-      trainerId: row.trainer_id ?? null,
+      paymentStatus: row.payment_status ?? row.paymentStatus,
+      lastCheckIn: row.last_check_in ?? row.lastCheckIn ?? null,
+      emergencyContact: row.emergency_contact ?? row.emergencyContact ?? null,
+      trainerId: row.trainer_id ?? row.trainerId ?? null,
       notes: row.notes ?? null,
       gender: row.gender ?? null,
       age: row.age ?? null,
@@ -129,8 +130,24 @@ export class TursoStorage implements IStorage {
   }
 
   async listMembers(): Promise<Member[]> {
-    const r = await this.db.execute(`SELECT * FROM members ORDER BY name`);
-    return (r.rows as unknown[]).map((x: any) => this.mapMember(x)) as any;
+    try {
+      console.log("listMembers: executing query");
+      const r = await this.db.execute(`SELECT * FROM members ORDER BY name`);
+      console.log("listMembers: got rows", r.rows.length);
+      const mapped = (r.rows as unknown[]).map((x: any) => {
+        try {
+          return this.mapMember(x);
+        } catch (e) {
+          console.error("Error mapping member row:", x, e);
+          throw e;
+        }
+      });
+      console.log("listMembers: mapped successfully", mapped.length);
+      return mapped as any;
+    } catch (error) {
+      console.error("listMembers error:", error);
+      throw error;
+    }
   }
 
   async getMember(id: string): Promise<Member | undefined> {

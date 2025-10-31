@@ -12,9 +12,16 @@ export async function registerRoutes(app: Express): Promise<void> {
 	});
 
 	// members
-app.get("/api/members", async (_req: Request, res: Response) => {
-		const items = await storage.listMembers();
-		return jsonOk(res, items);
+app.get("/api/members", async (_req: Request, res: Response, next: NextFunction) => {
+		try {
+			console.log("GET /api/members called");
+			const items = await storage.listMembers();
+			console.log("GET /api/members returning", items.length, "items");
+			return jsonOk(res, items);
+		} catch (err) {
+			console.error("GET /api/members error:", err);
+			next(err);
+		}
 	});
 
 app.post("/api/members", async (req: Request, res: Response, next: NextFunction) => {

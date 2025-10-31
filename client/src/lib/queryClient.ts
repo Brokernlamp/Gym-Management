@@ -29,7 +29,9 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = queryKey.join("/") as string;
+    console.log("Fetching:", url);
+    const res = await fetch(url, {
       credentials: "include",
     });
 
@@ -38,7 +40,9 @@ export const getQueryFn: <T>(options: {
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    const data = await res.json();
+    console.log("Fetched data:", url, data);
+    return data;
   };
 
 export const queryClient = new QueryClient({
@@ -46,9 +50,9 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      refetchOnWindowFocus: true, // Refetch when user comes back to tab
+      staleTime: 0, // Always refetch to get latest data
+      retry: 1,
     },
     mutations: {
       retry: false,

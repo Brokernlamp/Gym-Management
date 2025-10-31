@@ -24,10 +24,12 @@ export default function Members() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [open, setOpen] = useState(false);
 
-  const { data: members = [] } = useQuery({
+  const { data: members = [], isLoading, error } = useQuery({
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+
+  console.log("Members query state:", { isLoading, error, count: members.length, members });
 
   const formSchema = z.object({
     name: z.string().min(2),
