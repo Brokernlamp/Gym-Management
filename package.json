@@ -76,7 +76,7 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "serverless-http": "^3.2.0",
-    "@libsql/client": "latest",
+    "@libsql/client": "0.15.15",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"
   },
