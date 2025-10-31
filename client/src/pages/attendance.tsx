@@ -92,18 +92,31 @@ export default function Attendance() {
   });
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
   const today = new Date().toDateString();
+  const parseDate = (dateStr: any) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
+  };
   const todayCheckIns = attendance
-    .filter((a: any) => new Date(a.checkInTime).toDateString() === today)
+    .filter((a: any) => {
+      const checkIn = parseDate(a.checkInTime);
+      return checkIn && checkIn.toDateString() === today;
+    })
     .map((a: any) => {
       const m = memberById.get(a.memberId);
       return {
         id: a.id,
         name: m?.name ?? a.memberId,
         photoUrl: m?.photoUrl,
-        checkInTime: new Date(a.checkInTime),
-        checkOutTime: a.checkOutTime ? new Date(a.checkOutTime) : undefined,
+        checkInTime: parseDate(a.checkInTime),
+        checkOutTime: parseDate(a.checkOutTime),
       };
-    });
+    })
+    .filter((c: any) => c.checkInTime); // Only include valid dates
 
   //todo: remove mock functionality
   const memberFrequency = [

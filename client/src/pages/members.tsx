@@ -147,23 +147,36 @@ export default function Members() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredMembers.map((member: any) => (
-          <MemberCard
-            key={member.id}
-            id={member.id}
-            name={member.name}
-            photoUrl={member.photoUrl}
-            planName={member.planName}
-            expiryDate={member.expiryDate ? new Date(member.expiryDate) : undefined}
-            status={member.status}
-            paymentStatus={member.paymentStatus}
-            lastCheckIn={member.lastCheckIn ? new Date(member.lastCheckIn) : undefined}
-            onViewProfile={(id) => console.log("View profile:", id)}
-            onSendReminder={(id) => console.log("Send reminder:", id)}
-            onFreeze={(id) => console.log("Freeze:", id)}
-            onExtend={(id) => console.log("Extend:", id)}
-          />
-        ))}
+        {filteredMembers.map((member: any) => {
+          // Safely parse dates - handle null, empty strings, and invalid dates
+          const parseDate = (dateStr: any) => {
+            if (!dateStr) return undefined;
+            try {
+              const date = new Date(dateStr);
+              return isNaN(date.getTime()) ? undefined : date;
+            } catch {
+              return undefined;
+            }
+          };
+          
+          return (
+            <MemberCard
+              key={member.id}
+              id={member.id}
+              name={member.name}
+              photoUrl={member.photoUrl}
+              planName={member.planName}
+              expiryDate={parseDate(member.expiryDate)}
+              status={member.status}
+              paymentStatus={member.paymentStatus}
+              lastCheckIn={parseDate(member.lastCheckIn)}
+              onViewProfile={(id) => console.log("View profile:", id)}
+              onSendReminder={(id) => console.log("Send reminder:", id)}
+              onFreeze={(id) => console.log("Freeze:", id)}
+              onExtend={(id) => console.log("Extend:", id)}
+            />
+          );
+        })}
       </div>
 
       {filteredMembers.length === 0 && (
