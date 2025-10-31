@@ -12,9 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Dashboard from "@/pages/dashboard";
 import Members from "@/pages/members";
+import Financial from "@/pages/financial";
+import Attendance from "@/pages/attendance";
 import Classes from "@/pages/classes";
 import WhatsApp from "@/pages/whatsapp";
 import Equipment from "@/pages/equipment";
+import Reports from "@/pages/reports";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,9 +25,12 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/members" component={Members} />
+      <Route path="/financial" component={Financial} />
+      <Route path="/attendance" component={Attendance} />
       <Route path="/classes" component={Classes} />
       <Route path="/whatsapp" component={WhatsApp} />
       <Route path="/equipment" component={Equipment} />
+      <Route path="/reports" component={Reports} />
       <Route component={NotFound} />
     </Switch>
   );
