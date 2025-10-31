@@ -140,36 +140,44 @@ export class TursoStorage implements IStorage {
   }
 
   async createMember(member: InsertMember): Promise<Member> {
-    const id = randomUUID();
-    await this.db.execute({
-      sql: `INSERT INTO members (
-        id, name, email, phone, photo_url, login_code, plan_id, plan_name,
-        start_date, expiry_date, status, payment_status, last_check_in,
-        emergency_contact, trainer_id, notes, gender, age
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        id,
-        member.name,
-        member.email,
-        member.phone,
-        (member as any).photoUrl ?? null,
-        member.loginCode,
-        (member as any).planId ?? null,
-        (member as any).planName ?? null,
-        (member as any).startDate ?? null,
-        (member as any).expiryDate ?? null,
-        member.status,
-        (member as any).paymentStatus,
-        (member as any).lastCheckIn ?? null,
-        (member as any).emergencyContact ?? null,
-        (member as any).trainerId ?? null,
-        (member as any).notes ?? null,
-        (member as any).gender ?? null,
-        (member as any).age ?? null,
-      ],
-    });
-    const created = await this.getMember(id);
-    return created as Member;
+    try {
+      const id = randomUUID();
+      console.log("Creating member:", id, member.name);
+      const result = await this.db.execute({
+        sql: `INSERT INTO members (
+          id, name, email, phone, photo_url, login_code, plan_id, plan_name,
+          start_date, expiry_date, status, payment_status, last_check_in,
+          emergency_contact, trainer_id, notes, gender, age
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          id,
+          member.name,
+          member.email,
+          member.phone,
+          (member as any).photoUrl ?? null,
+          member.loginCode,
+          (member as any).planId ?? null,
+          (member as any).planName ?? null,
+          (member as any).startDate ?? null,
+          (member as any).expiryDate ?? null,
+          member.status,
+          (member as any).paymentStatus,
+          (member as any).lastCheckIn ?? null,
+          (member as any).emergencyContact ?? null,
+          (member as any).trainerId ?? null,
+          (member as any).notes ?? null,
+          (member as any).gender ?? null,
+          (member as any).age ?? null,
+        ],
+      });
+      console.log("Member inserted, rowsAffected:", result.rowsAffected);
+      const created = await this.getMember(id);
+      if (!created) throw new Error("Failed to retrieve created member");
+      return created as Member;
+    } catch (error) {
+      console.error("createMember error:", error);
+      throw error;
+    }
   }
 
   async updateMember(id: string, member: Partial<InsertMember>): Promise<Member | undefined> {
