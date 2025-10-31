@@ -18,6 +18,8 @@ import Classes from "@/pages/classes";
 import WhatsApp from "@/pages/whatsapp";
 import Equipment from "@/pages/equipment";
 import Reports from "@/pages/reports";
+import Settings from "@/pages/settings";
+import UserAttendance from "@/pages/user-attendance";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -31,6 +33,8 @@ function Router() {
       <Route path="/whatsapp" component={WhatsApp} />
       <Route path="/equipment" component={Equipment} />
       <Route path="/reports" component={Reports} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/user/attendance" component={UserAttendance} />
       <Route component={NotFound} />
     </Switch>
   );

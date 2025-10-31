@@ -23,6 +23,7 @@ export const members = pgTable("members", {
   email: text("email").notNull(),
   phone: text("phone").notNull(),
   photoUrl: text("photo_url"),
+  loginCode: text("login_code").notNull().unique(),
   planId: varchar("plan_id"),
   planName: text("plan_name"),
   startDate: timestamp("start_date"),
@@ -83,6 +84,9 @@ export const attendance = pgTable("attendance", {
   memberId: varchar("member_id").notNull(),
   checkInTime: timestamp("check_in_time").notNull(),
   checkOutTime: timestamp("check_out_time"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  markedVia: text("marked_via").notNull().default("manual"),
 });
 
 export const insertAttendanceSchema = createInsertSchema(attendance).omit({
