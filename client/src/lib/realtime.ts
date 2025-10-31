@@ -4,6 +4,8 @@ type EventMessage = { type: string; payload: unknown };
 
 export function useRealtimeInvalidation(queryClient: QueryClient) {
   if (typeof window === "undefined") return;
+  // Disable SSE on serverless platforms (Netlify) unless explicitly enabled
+  if (import.meta.env.VITE_ENABLE_SSE !== "true") return;
 
   // Avoid multiple EventSources if hot reloading
   const w = window as any;
