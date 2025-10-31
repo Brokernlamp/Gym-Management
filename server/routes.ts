@@ -167,6 +167,28 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 		return res.status(204).end();
 	});
 
+	// health: verify DB connectivity quickly
+	app.get("/api/health", async (_req: Request, res: Response) => {
+		try {
+			const [members, payments, attendance] = await Promise.all([
+				storage.listMembers(),
+				storage.listPayments(),
+				storage.listAttendance(),
+			]);
+			return jsonOk(res, {
+				ok: true,
+				db: "turso",
+				counts: {
+					members: members.length,
+					payments: payments.length,
+					attendance: attendance.length,
+				},
+			});
+		} catch (e: any) {
+			return res.status(500).json({ ok: false, message: e?.message ?? "DB error" });
+		}
+	});
+
 	const httpServer = createServer(app);
 
 	return httpServer;

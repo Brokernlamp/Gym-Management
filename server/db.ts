@@ -1,4 +1,5 @@
-import { createClient } from "@libsql/client";
+// Use the Web adapter to avoid native binaries on serverless (Netlify)
+import { createClient } from "@libsql/client/web";
 
 let client: ReturnType<typeof createClient> | null = null;
 
