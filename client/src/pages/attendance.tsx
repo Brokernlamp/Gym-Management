@@ -28,9 +28,15 @@ import {
   Legend,
 } from "recharts";
 import { format } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [open, setOpen] = useState(false);
 
   //todo: remove mock functionality
   const heatmapData = [];
@@ -70,15 +76,18 @@ export default function Attendance() {
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+  const formSchema = z.object({ memberId: z.string().min(1) });
+  type FormValues = z.infer<typeof formSchema>;
+  const form = useForm<FormValues>({ resolver: zodResolver(formSchema) });
   const manualCheckin = useMutation({
-    mutationFn: async () => {
-      const memberId = window.prompt("Member ID to check in?")?.trim();
-      if (!memberId) return;
-      await apiRequest("POST", "/api/attendance", { memberId, markedVia: "manual" });
+    mutationFn: async (values: FormValues) => {
+      await apiRequest("POST", "/api/attendance", { memberId: values.memberId, markedVia: "manual" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      setOpen(false);
+      form.reset();
     },
   });
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
@@ -132,7 +141,7 @@ export default function Attendance() {
           <h1 className="text-3xl font-bold">Attendance & Check-In</h1>
           <p className="text-muted-foreground">Monitor member attendance and activity</p>
         </div>
-        <Button data-testid="button-manual-checkin" onClick={() => manualCheckin.mutate()}>
+        <Button data-testid="button-manual-checkin" onClick={() => setOpen(true)}>
           <LogIn className="h-4 w-4 mr-2" />
           Manual Check-In
         </Button>
@@ -277,6 +286,35 @@ export default function Attendance() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manual Check-In</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit((v) => manualCheckin.mutate(v))} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="memberId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Member ID</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Member ID" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={manualCheckin.isPending}>Check In</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

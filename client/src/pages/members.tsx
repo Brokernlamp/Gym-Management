@@ -4,6 +4,8 @@ import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 import { MemberCard } from "@/components/member-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -13,33 +15,46 @@ import {
 } from "@/components/ui/select";
 import { Search, UserPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 export default function Members() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [open, setOpen] = useState(false);
 
   const { data: members = [] } = useQuery({
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
+  const formSchema = z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    phone: z.string().min(6),
+    status: z.enum(["active", "expired", "pending", "frozen"]).default("active"),
+    paymentStatus: z.enum(["paid", "pending", "overdue"]).default("paid"),
+  });
+
+  type FormValues = z.infer<typeof formSchema>;
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { name: "", email: "", phone: "", status: "active", paymentStatus: "paid" },
+  });
+
   const createMember = useMutation({
-    mutationFn: async () => {
-      const name = window.prompt("Member name")?.trim();
-      const email = window.prompt("Email")?.trim();
-      const phone = window.prompt("Phone")?.trim();
-      if (!name || !email || !phone) return;
+    mutationFn: async (values: FormValues) => {
       await apiRequest("POST", "/api/members", {
-        name,
-        email,
-        phone,
+        ...values,
         loginCode: String(Math.floor(Math.random() * 900000) + 100000),
-        status: "active",
-        paymentStatus: "paid",
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      setOpen(false);
+      form.reset();
     },
   });
 
@@ -63,7 +78,7 @@ export default function Members() {
           <h1 className="text-3xl font-bold">Members</h1>
           <p className="text-muted-foreground">Manage your gym members</p>
         </div>
-        <Button data-testid="button-add-member" onClick={() => createMember.mutate()}>
+        <Button data-testid="button-add-member" onClick={() => setOpen(true)}>
           <UserPlus className="h-4 w-4 mr-2" />
           Add Member
         </Button>
@@ -154,6 +169,107 @@ export default function Members() {
           No members found matching your criteria
         </div>
       )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Member</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit((v) => createMember.mutate(v))}
+              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Full name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="email@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+91..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="expired">Expired</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="frozen">Frozen</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paymentStatus"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Status</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={createMember.isPending}>Save</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

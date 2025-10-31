@@ -51,6 +51,67 @@ export interface IStorage {
 export class TursoStorage implements IStorage {
   private db = getDb();
 
+  private mapMember(row: any): Member {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      photoUrl: row.photo_url ?? null,
+      loginCode: row.login_code,
+      planId: row.plan_id ?? null,
+      planName: row.plan_name ?? null,
+      startDate: row.start_date ?? null,
+      expiryDate: row.expiry_date ?? null,
+      status: row.status,
+      paymentStatus: row.payment_status,
+      lastCheckIn: row.last_check_in ?? null,
+      emergencyContact: row.emergency_contact ?? null,
+      trainerId: row.trainer_id ?? null,
+      notes: row.notes ?? null,
+      gender: row.gender ?? null,
+      age: row.age ?? null,
+    } as any;
+  }
+
+  private mapPayment(row: any): Payment {
+    return {
+      id: row.id,
+      memberId: row.member_id,
+      amount: row.amount,
+      paymentMethod: row.payment_method,
+      status: row.status,
+      dueDate: row.due_date ?? null,
+      paidDate: row.paid_date ?? null,
+      planName: row.plan_name ?? null,
+    } as any;
+  }
+
+  private mapAttendance(row: any): Attendance {
+    return {
+      id: row.id,
+      memberId: row.member_id,
+      checkInTime: row.check_in_time,
+      checkOutTime: row.check_out_time ?? null,
+      latitude: row.latitude ?? null,
+      longitude: row.longitude ?? null,
+      markedVia: row.marked_via,
+    } as any;
+  }
+
+  private mapEquipment(row: any): Equipment {
+    return {
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      purchaseDate: row.purchase_date ?? null,
+      warrantyExpiry: row.warranty_expiry ?? null,
+      lastMaintenance: row.last_maintenance ?? null,
+      nextMaintenance: row.next_maintenance ?? null,
+      status: row.status,
+    } as any;
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const r = await this.db.execute({ sql: `SELECT id, username, password FROM users WHERE id = ?`, args: [id] });
     return r.rows[0] as any;
@@ -69,12 +130,13 @@ export class TursoStorage implements IStorage {
 
   async listMembers(): Promise<Member[]> {
     const r = await this.db.execute(`SELECT * FROM members ORDER BY name`);
-    return r.rows as any;
+    return (r.rows as unknown[]).map((x: any) => this.mapMember(x)) as any;
   }
 
   async getMember(id: string): Promise<Member | undefined> {
     const r = await this.db.execute({ sql: `SELECT * FROM members WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    return row ? this.mapMember(row) : undefined;
   }
 
   async createMember(member: InsertMember): Promise<Member> {
@@ -147,7 +209,7 @@ export class TursoStorage implements IStorage {
 
   async listPayments(): Promise<Payment[]> {
     const r = await this.db.execute(`SELECT * FROM payments ORDER BY COALESCE(paid_date, due_date) DESC`);
-    return r.rows as any;
+    return (r.rows as unknown[]).map((x: any) => this.mapPayment(x)) as any;
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
@@ -166,7 +228,20 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM payments WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    if (!row) {
+      return {
+        id,
+        memberId: payment.memberId,
+        amount: String((payment as any).amount ?? "0"),
+        paymentMethod: (payment as any).paymentMethod,
+        status: (payment as any).status,
+        dueDate: (payment as any).dueDate ?? null,
+        paidDate: (payment as any).paidDate ?? null,
+        planName: (payment as any).planName ?? null,
+      } as any;
+    }
+    return this.mapPayment(row) as any;
   }
 
   async updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined> {
@@ -188,7 +263,8 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM payments WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    return row ? this.mapPayment(row) as any : undefined;
   }
 
   async deletePayment(id: string): Promise<boolean> {
@@ -198,7 +274,7 @@ export class TursoStorage implements IStorage {
 
   async listEquipment(): Promise<Equipment[]> {
     const r = await this.db.execute(`SELECT * FROM equipment ORDER BY name`);
-    return r.rows as any;
+    return (r.rows as unknown[]).map((x: any) => this.mapEquipment(x)) as any;
   }
 
   async createEquipment(equipment: InsertEquipment): Promise<Equipment> {
@@ -217,7 +293,20 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    if (!row) {
+      return {
+        id,
+        name: equipment.name,
+        category: (equipment as any).category,
+        purchaseDate: (equipment as any).purchaseDate ?? null,
+        warrantyExpiry: (equipment as any).warrantyExpiry ?? null,
+        lastMaintenance: (equipment as any).lastMaintenance ?? null,
+        nextMaintenance: (equipment as any).nextMaintenance ?? null,
+        status: (equipment as any).status,
+      } as any;
+    }
+    return this.mapEquipment(row) as any;
   }
 
   async updateEquipment(id: string, equipment: Partial<InsertEquipment>): Promise<Equipment | undefined> {
@@ -239,7 +328,8 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    return row ? this.mapEquipment(row) as any : undefined;
   }
 
   async deleteEquipment(id: string): Promise<boolean> {
@@ -249,7 +339,7 @@ export class TursoStorage implements IStorage {
 
   async listAttendance(): Promise<Attendance[]> {
     const r = await this.db.execute(`SELECT * FROM attendance ORDER BY COALESCE(check_out_time, check_in_time) DESC`);
-    return r.rows as any;
+    return (r.rows as unknown[]).map((x: any) => this.mapAttendance(x)) as any;
   }
 
   async createAttendance(record: InsertAttendance): Promise<Attendance> {
@@ -267,7 +357,19 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM attendance WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    if (!row) {
+      return {
+        id,
+        memberId: record.memberId,
+        checkInTime: (record as any).checkInTime ?? new Date().toISOString(),
+        checkOutTime: (record as any).checkOutTime ?? null,
+        latitude: (record as any).latitude ?? null,
+        longitude: (record as any).longitude ?? null,
+        markedVia: (record as any).markedVia ?? "manual",
+      } as any;
+    }
+    return this.mapAttendance(row) as any;
   }
 
   async updateAttendance(id: string, record: Partial<InsertAttendance>): Promise<Attendance | undefined> {
@@ -288,7 +390,8 @@ export class TursoStorage implements IStorage {
       ],
     });
     const r = await this.db.execute({ sql: `SELECT * FROM attendance WHERE id = ?`, args: [id] });
-    return r.rows[0] as any;
+    const row = r.rows[0];
+    return row ? this.mapAttendance(row) as any : undefined;
   }
 
   async deleteAttendance(id: string): Promise<boolean> {

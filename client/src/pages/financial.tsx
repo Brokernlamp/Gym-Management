@@ -22,6 +22,11 @@ import {
   Plus,
 } from "lucide-react";
 import { MetricCard } from "@/components/metric-card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   PieChart,
   Pie,
@@ -38,6 +43,7 @@ import {
 
 export default function Financial() {
   const [paymentMethod, setPaymentMethod] = useState("all");
+  const [open, setOpen] = useState(false);
 
   //todo: remove mock functionality
   const revenueByPlan = [
@@ -61,21 +67,30 @@ export default function Financial() {
     queryKey: ["/api/payments"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+  const formSchema = z.object({
+    memberId: z.string().min(1),
+    amount: z.string().min(1),
+    paymentMethod: z.enum(["cash", "card", "upi", "online"]).default("cash"),
+    status: z.enum(["paid", "pending", "overdue"]).default("paid"),
+  });
+
+  type FormValues = z.infer<typeof formSchema>;
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { paymentMethod: "cash", status: "paid" } as any,
+  });
+
   const processPayment = useMutation({
-    mutationFn: async () => {
-      const memberId = window.prompt("Member ID for payment?")?.trim();
-      const amount = window.prompt("Amount?")?.trim();
-      if (!memberId || !amount) return;
+    mutationFn: async (values: FormValues) => {
       await apiRequest("POST", "/api/payments", {
-        memberId,
-        amount,
-        paymentMethod: "cash",
-        status: "paid",
-        paidDate: new Date().toISOString(),
+        ...values,
+        paidDate: values.status === "paid" ? new Date().toISOString() : null,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setOpen(false);
+      form.reset();
     },
   });
   const { data: members = [] } = useQuery({
@@ -140,7 +155,7 @@ export default function Financial() {
             <Download className="h-4 w-4 mr-2" />
             Export Report
           </Button>
-          <Button data-testid="button-process-payment" onClick={() => processPayment.mutate()}>
+          <Button data-testid="button-process-payment" onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Process Payment
           </Button>
@@ -266,6 +281,91 @@ export default function Financial() {
           />
         </CardContent>
       </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Process Payment</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit((v) => processPayment.mutate(v))} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="memberId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Member ID</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Member ID" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Method</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="card">Card</SelectItem>
+                          <SelectItem value="upi">UPI</SelectItem>
+                          <SelectItem value="online">Online</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={processPayment.isPending}>Save</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
