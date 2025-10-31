@@ -2,46 +2,30 @@ import { EquipmentStatus } from "@/components/equipment-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Wrench, AlertTriangle, CheckCircle } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 
 export default function Equipment() {
-  //todo: remove mock functionality
-  const equipment = [
-    {
-      id: "1",
-      name: "Treadmill #1",
-      category: "Cardio",
-      status: "operational" as const,
-      nextMaintenance: new Date(2025, 11, 15),
+  const { data: equipment = [] } = useQuery({
+    queryKey: ["/api/equipment"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const addEquipment = useMutation({
+    mutationFn: async () => {
+      const name = window.prompt("Equipment name")?.trim();
+      const category = window.prompt("Category")?.trim();
+      if (!name || !category) return;
+      await apiRequest("POST", "/api/equipment", {
+        name,
+        category,
+        status: "operational",
+      });
     },
-    {
-      id: "2",
-      name: "Bench Press",
-      category: "Strength",
-      status: "maintenance" as const,
-      nextMaintenance: new Date(2025, 10, 5),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/equipment"] });
     },
-    {
-      id: "3",
-      name: "Rowing Machine #2",
-      category: "Cardio",
-      status: "repair" as const,
-      nextMaintenance: new Date(2025, 10, 1),
-    },
-    {
-      id: "4",
-      name: "Leg Press",
-      category: "Strength",
-      status: "operational" as const,
-      nextMaintenance: new Date(2025, 11, 20),
-    },
-    {
-      id: "5",
-      name: "Elliptical #3",
-      category: "Cardio",
-      status: "operational" as const,
-      nextMaintenance: new Date(2025, 11, 10),
-    },
-  ];
+  });
 
   const stats = {
     total: equipment.length,
@@ -57,7 +41,7 @@ export default function Equipment() {
           <h1 className="text-3xl font-bold">Equipment Management</h1>
           <p className="text-muted-foreground">Track and maintain gym equipment</p>
         </div>
-        <Button data-testid="button-add-equipment">
+        <Button data-testid="button-add-equipment" onClick={() => addEquipment.mutate()}>
           <Plus className="h-4 w-4 mr-2" />
           Add Equipment
         </Button>
