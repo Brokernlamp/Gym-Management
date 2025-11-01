@@ -30,7 +30,7 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const url = queryKey.join("/") as string;
-    console.log("Fetching:", url);
+    // Fetching data
     const res = await fetch(url, {
       credentials: "include",
     });
@@ -41,7 +41,7 @@ export const getQueryFn: <T>(options: {
 
     await throwIfResNotOk(res);
     const data = await res.json();
-    console.log("Fetched data:", url, data);
+    // Data fetched successfully
     return data;
   };
 

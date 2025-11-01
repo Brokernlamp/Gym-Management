@@ -9,8 +9,8 @@ interface MemberCardProps {
   id: string;
   name: string;
   photoUrl?: string;
-  planName: string;
-  expiryDate: Date;
+  planName?: string;
+  expiryDate?: Date;
   status: "active" | "expired" | "pending" | "frozen";
   paymentStatus: "paid" | "pending" | "overdue";
   lastCheckIn?: Date;
@@ -67,7 +67,7 @@ export function MemberCard({
           <div className="flex-1 space-y-2">
             <div>
               <h3 className="font-semibold" data-testid={`text-member-name-${id}`}>{name}</h3>
-              <p className="text-sm text-muted-foreground">{planName}</p>
+              {planName && <p className="text-sm text-muted-foreground">{planName}</p>}
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary" className={statusColors[status]}>
@@ -78,8 +78,12 @@ export function MemberCard({
               </Badge>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
-              <div>Expires: {format(expiryDate, "MMM dd, yyyy")}</div>
-              {lastCheckIn && <div>Last visit: {format(lastCheckIn, "MMM dd, yyyy")}</div>}
+              {expiryDate && !isNaN(expiryDate.getTime()) && (
+                <div>Expires: {format(expiryDate, "MMM dd, yyyy")}</div>
+              )}
+              {lastCheckIn && !isNaN(lastCheckIn.getTime()) && (
+                <div>Last visit: {format(lastCheckIn, "MMM dd, yyyy")}</div>
+              )}
             </div>
           </div>
         </div>

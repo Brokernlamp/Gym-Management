@@ -2,9 +2,10 @@ import { WhatsAppTemplate } from "@/components/whatsapp-template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare, Send, Clock, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function WhatsApp() {
-  //todo: remove mock functionality
+  const { toast } = useToast();
   const templates = [
     {
       id: "1",
@@ -36,12 +37,12 @@ export default function WhatsApp() {
     },
   ];
 
-  //todo: remove mock functionality
+  // WhatsApp messaging not implemented - stats not available
   const messageStats = {
-    sent: 342,
-    scheduled: 28,
-    delivered: 338,
-    deliveryRate: 98.8,
+    sent: 0,
+    scheduled: 0,
+    delivered: 0,
+    deliveryRate: 0,
   };
 
   return (
@@ -94,8 +95,8 @@ export default function WhatsApp() {
             <CheckCircle className="h-5 w-5 text-chart-3" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold tabular-nums">{messageStats.deliveryRate}%</div>
-            <p className="text-xs text-muted-foreground mt-1">Success rate</p>
+            <div className="text-3xl font-bold tabular-nums">N/A</div>
+            <p className="text-xs text-muted-foreground mt-1">Feature not implemented</p>
           </CardContent>
         </Card>
       </div>
@@ -104,8 +105,20 @@ export default function WhatsApp() {
         <h2 className="text-xl font-semibold mb-4">Message Templates</h2>
         <WhatsAppTemplate
           templates={templates}
-          onSelectTemplate={(id) => console.log("Select template:", id)}
-          onSend={(id) => console.log("Send template:", id)}
+          onSelectTemplate={(id) => {
+            const template = templates.find((t) => t.id === id);
+            toast({
+              title: "Template Selected",
+              description: template ? `Selected: ${template.name}` : "Template selected",
+            });
+          }}
+          onSend={(id) => {
+            const template = templates.find((t) => t.id === id);
+            toast({
+              title: "Message Sent",
+              description: template ? `${template.name} sent via WhatsApp` : "Message sent",
+            });
+          }}
         />
       </div>
     </div>

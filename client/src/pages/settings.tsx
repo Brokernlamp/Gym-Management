@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,21 +15,19 @@ import {
 } from "@/components/ui/select";
 import { Building2, Clock, DollarSign, Users, MessageSquare, Save, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
 
 export default function Settings() {
   const { toast } = useToast();
-  const [isSaving, setIsSaving] = useState(false);
-
-  //todo: remove mock functionality
   const [gymInfo, setGymInfo] = useState({
-    name: "FitLife Gym & Fitness",
-    address: "123 Main Street, Mumbai, Maharashtra 400001",
-    phone: "+91 98765 43210",
-    email: "info@fitlifegym.com",
-    gstNumber: "27XXXXX1234X1Z5",
+    name: "",
+    address: "",
+    phone: "",
+    email: "",
+    gstNumber: "",
   });
 
-  //todo: remove mock functionality
   const [operatingHours, setOperatingHours] = useState({
     weekdayOpen: "06:00",
     weekdayClose: "22:00",
@@ -37,38 +35,105 @@ export default function Settings() {
     weekendClose: "21:00",
   });
 
-  //todo: remove mock functionality
   const [gpsSettings, setGpsSettings] = useState({
     enabled: true,
-    latitude: "19.0760",
-    longitude: "72.8777",
+    latitude: "",
+    longitude: "",
     radius: "100",
   });
 
-  //todo: remove mock functionality
   const [whatsappSettings, setWhatsappSettings] = useState({
-    apiKey: "••••••••••••••••",
+    apiKey: "",
     autoReminders: true,
     reminderDays: "3",
   });
 
-  //todo: remove mock functionality
   const [paymentSettings, setPaymentSettings] = useState({
-    razorpayKey: "••••••••••••••••",
-    stripeKey: "••••••••••••••••",
+    razorpayKey: "",
+    stripeKey: "",
     taxRate: "18",
   });
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+  // Load settings
+  const { data: settings = {}, isLoading } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  // Update local state when settings load
+  useEffect(() => {
+    if (settings && !isLoading && Object.keys(settings).length > 0) {
+      setGymInfo({
+        name: settings.gymName || "",
+        address: settings.gymAddress || "",
+        phone: settings.gymPhone || "",
+        email: settings.gymEmail || "",
+        gstNumber: settings.gymGstNumber || "",
+      });
+      setOperatingHours({
+        weekdayOpen: settings.weekdayOpen || "06:00",
+        weekdayClose: settings.weekdayClose || "22:00",
+        weekendOpen: settings.weekendOpen || "07:00",
+        weekendClose: settings.weekendClose || "21:00",
+      });
+      setGpsSettings({
+        enabled: settings.gpsEnabled ?? true,
+        latitude: settings.gpsLatitude || "",
+        longitude: settings.gpsLongitude || "",
+        radius: settings.gpsRadius || "100",
+      });
+      setWhatsappSettings({
+        apiKey: settings.whatsappApiKey || "",
+        autoReminders: settings.whatsappAutoReminders ?? true,
+        reminderDays: settings.whatsappReminderDays || "3",
+      });
+      setPaymentSettings({
+        razorpayKey: settings.razorpayKey || "",
+        stripeKey: settings.stripeKey || "",
+        taxRate: settings.taxRate || "18",
+      });
+    }
+  }, [settings, isLoading]);
+
+  const saveSettings = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/settings", {
+        gymName: gymInfo.name,
+        gymAddress: gymInfo.address,
+        gymPhone: gymInfo.phone,
+        gymEmail: gymInfo.email,
+        gymGstNumber: gymInfo.gstNumber,
+        weekdayOpen: operatingHours.weekdayOpen,
+        weekdayClose: operatingHours.weekdayClose,
+        weekendOpen: operatingHours.weekendOpen,
+        weekendClose: operatingHours.weekendClose,
+        gpsEnabled: gpsSettings.enabled,
+        gpsLatitude: gpsSettings.latitude,
+        gpsLongitude: gpsSettings.longitude,
+        gpsRadius: gpsSettings.radius,
+        whatsappApiKey: whatsappSettings.apiKey,
+        whatsappAutoReminders: whatsappSettings.autoReminders,
+        whatsappReminderDays: whatsappSettings.reminderDays,
+        razorpayKey: paymentSettings.razorpayKey,
+        stripeKey: paymentSettings.stripeKey,
+        taxRate: paymentSettings.taxRate,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       toast({
         title: "Settings saved",
         description: "Your settings have been saved successfully.",
       });
-    }, 1000);
-  };
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -77,9 +142,9 @@ export default function Settings() {
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground">Manage your gym configuration and preferences</p>
         </div>
-        <Button onClick={handleSave} disabled={isSaving} data-testid="button-save-settings">
+        <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} data-testid="button-save-settings">
           <Save className="h-4 w-4 mr-2" />
-          {isSaving ? "Saving..." : "Save Changes"}
+          {saveSettings.isPending ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 

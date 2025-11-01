@@ -76,6 +76,30 @@ export const insertPlanSchema = createInsertSchema(plans).omit({
   id: true,
 });
 
+// Settings schema (simple key-value store)
+export const settingsSchema = z.object({
+  gymName: z.string().optional(),
+  gymAddress: z.string().optional(),
+  gymPhone: z.string().optional(),
+  gymEmail: z.string().email().optional(),
+  gymGstNumber: z.string().optional(),
+  weekdayOpen: z.string().optional(),
+  weekdayClose: z.string().optional(),
+  weekendOpen: z.string().optional(),
+  weekendClose: z.string().optional(),
+  gpsEnabled: z.boolean().optional(),
+  gpsLatitude: z.string().optional(),
+  gpsLongitude: z.string().optional(),
+  gpsRadius: z.string().optional(),
+  whatsappApiKey: z.string().optional(),
+  whatsappAutoReminders: z.boolean().optional(),
+  whatsappReminderDays: z.string().optional(),
+  razorpayKey: z.string().optional(),
+  stripeKey: z.string().optional(),
+  taxRate: z.string().optional(),
+});
+export type Settings = z.infer<typeof settingsSchema>;
+
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
 export type Plan = typeof plans.$inferSelect;
 

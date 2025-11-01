@@ -11,13 +11,13 @@ import { format } from "date-fns";
 export default function UserAttendance() {
   const { toast } = useToast();
   const [loginCode, setLoginCode] = useState("");
+  const [storedLoginCode, setStoredLoginCode] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMarkedToday, setHasMarkedToday] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState("");
 
-  //todo: remove mock functionality
   const [memberInfo, setMemberInfo] = useState({
     name: "",
     planName: "",
@@ -54,7 +54,7 @@ export default function UserAttendance() {
   const handleLogin = async () => {
     if (!loginCode.trim()) {
       toast({
-        title: "Error",
+        title: "Login Code Required",
         description: "Please enter your login code",
         variant: "destructive",
       });
@@ -62,33 +62,44 @@ export default function UserAttendance() {
     }
 
     setIsLoading(true);
-
-    //todo: remove mock functionality - replace with actual API call
-    setTimeout(() => {
-      // Mock login - in real app, verify login code against database
-      if (loginCode.length >= 6) {
-        setIsLoggedIn(true);
-        setMemberInfo({
-          name: "Rajesh Kumar",
-          planName: "Premium Annual",
-          expiryDate: new Date(2026, 2, 15),
-          lastCheckIn: new Date(2025, 9, 29),
-        });
-        setHasMarkedToday(false); // Check if already marked today
-        toast({
-          title: "Login Successful",
-          description: "Welcome back!",
-        });
-      } else {
-        toast({
-          title: "Invalid Code",
-          description: "Please check your login code and try again",
-          variant: "destructive",
-        });
+    try {
+      const response = await fetch(`/api/members/login/${loginCode.trim()}`);
+      if (!response.ok) {
+        throw new Error("Member not found");
       }
+      const member = await response.json();
+      setMemberInfo({
+        name: member.name,
+        planName: member.planName || "",
+        expiryDate: member.expiryDate ? new Date(member.expiryDate) : new Date(),
+        lastCheckIn: member.lastCheckIn ? new Date(member.lastCheckIn) : null,
+      });
+      setIsLoggedIn(true);
+      setStoredLoginCode(loginCode.trim());
+      toast({
+        title: "Login Successful",
+        description: `Welcome back, ${member.name}!`,
+      });
+    } catch (err) {
+      toast({
+        title: "Login Failed",
+        description: "Invalid login code. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setLoginCode("");
+    setStoredLoginCode("");
+    setMemberInfo({ name: "", planName: "", expiryDate: new Date(), lastCheckIn: null });
+    setHasMarkedToday(false);
+    setLocation(null);
+  };
+
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3; // Earth radius in meters
@@ -115,26 +126,48 @@ export default function UserAttendance() {
       return;
     }
 
-    //todo: remove mock functionality - replace with actual gym coordinates from settings
-    const gymLat = 19.076;
-    const gymLng = 72.8777;
-    const allowedRadius = 100; // meters
-
-    const distance = calculateDistance(location.lat, location.lng, gymLat, gymLng);
-
-    if (distance > allowedRadius) {
-      toast({
-        title: "Out of Range",
-        description: `You must be within ${allowedRadius}m of the gym. You are ${Math.round(distance)}m away.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
+    // Get gym coordinates from settings
     setIsLoading(true);
+    try {
+      const settingsRes = await fetch("/api/settings");
+      const settings = settingsRes.ok ? await settingsRes.json() : {};
+      const gymLat = parseFloat(settings.gpsLatitude || "19.076");
+      const gymLng = parseFloat(settings.gpsLongitude || "72.8777");
+      const allowedRadius = parseInt(settings.gpsRadius || "100");
 
-    //todo: remove mock functionality - replace with actual API call to save attendance
-    setTimeout(() => {
+      if (settings.gpsEnabled && location) {
+        const distance = calculateDistance(location.lat, location.lng, gymLat, gymLng);
+        if (distance > allowedRadius) {
+          toast({
+            title: "Out of Range",
+            description: `You must be within ${allowedRadius}m of the gym. You are ${Math.round(distance)}m away.`,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Find member ID from login code (use stored code)
+      const codeToUse = storedLoginCode || loginCode.trim();
+      const memberRes = await fetch(`/api/members/login/${codeToUse}`);
+      if (!memberRes.ok) throw new Error("Member not found");
+      const member = await memberRes.json();
+
+      // Mark attendance via API
+      const attendanceRes = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: member.id,
+          markedVia: "gps",
+          latitude: location?.lat || null,
+          longitude: location?.lng || null,
+        }),
+      });
+
+      if (!attendanceRes.ok) throw new Error("Failed to mark attendance");
+
       setHasMarkedToday(true);
       setMemberInfo({
         ...memberInfo,
@@ -144,8 +177,15 @@ export default function UserAttendance() {
         title: "Attendance Marked!",
         description: "Your attendance has been recorded successfully.",
       });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to mark attendance. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   if (!isLoggedIn) {

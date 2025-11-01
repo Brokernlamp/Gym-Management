@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -37,36 +38,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
-
-  //todo: remove mock functionality
-  const heatmapData = [];
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  for (const day of days) {
-    for (let hour = 6; hour < 20; hour++) {
-      const isEveningPeak = hour >= 17 && hour <= 19;
-      const isMorningPeak = hour >= 6 && hour <= 8;
-      const isWeekend = day === "Sat" || day === "Sun";
-      
-      let baseCount = 15;
-      if (isEveningPeak) baseCount += 25;
-      if (isMorningPeak) baseCount += 15;
-      if (isWeekend) baseCount += 10;
-      
-      const count = Math.floor(baseCount + Math.random() * 10);
-      heatmapData.push({ hour, day, count });
-    }
-  }
-
-  //todo: remove mock functionality
-  const weeklyTrend = [
-    { day: "Mon", checkIns: 145 },
-    { day: "Tue", checkIns: 152 },
-    { day: "Wed", checkIns: 138 },
-    { day: "Thu", checkIns: 161 },
-    { day: "Fri", checkIns: 148 },
-    { day: "Sat", checkIns: 178 },
-    { day: "Sun", checkIns: 165 },
-  ];
+  const { toast } = useToast();
 
   const { data: attendance = [] } = useQuery({
     queryKey: ["/api/attendance"],
@@ -83,15 +55,23 @@ export default function Attendance() {
     mutationFn: async (values: FormValues) => {
       await apiRequest("POST", "/api/attendance", { memberId: values.memberId, markedVia: "manual" });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/attendance"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/members"] });
       setOpen(false);
       form.reset();
     },
   });
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
-  const today = new Date().toDateString();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toDateString();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toDateString();
+  
   const parseDate = (dateStr: any) => {
     if (!dateStr) return null;
     try {
@@ -101,10 +81,11 @@ export default function Attendance() {
       return null;
     }
   };
+  
   const todayCheckIns = attendance
     .filter((a: any) => {
       const checkIn = parseDate(a.checkInTime);
-      return checkIn && checkIn.toDateString() === today;
+      return checkIn && checkIn.toDateString() === todayStr;
     })
     .map((a: any) => {
       const m = memberById.get(a.memberId);
@@ -118,21 +99,136 @@ export default function Attendance() {
     })
     .filter((c: any) => c.checkInTime); // Only include valid dates
 
-  //todo: remove mock functionality
+  const yesterdayCheckIns = attendance.filter((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    return checkIn && checkIn.toDateString() === yesterdayStr;
+  });
+
+  // Currently in gym (checked in today without checkout)
+  const currentlyInGym = todayCheckIns.filter((c: any) => !c.checkOutTime);
+
+  // Calculate weekly trend (last 7 days)
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weeklyTrend = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dayOfWeek = date.getDay();
+    const dayName = days[dayOfWeek === 0 ? 6 : dayOfWeek - 1];
+    const dayStr = date.toDateString();
+    const dayCheckIns = attendance.filter((a: any) => {
+      const checkIn = parseDate(a.checkInTime);
+      return checkIn && checkIn.toDateString() === dayStr;
+    });
+    weeklyTrend.push({ day: dayName, checkIns: dayCheckIns.length });
+  }
+
+  // Calculate average daily check-ins (last 30 days)
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentCheckIns = attendance.filter((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    return checkIn && checkIn >= thirtyDaysAgo;
+  });
+  const avgDailyCheckIns = Math.round(recentCheckIns.length / 30);
+
+  // Calculate peak hour from attendance data
+  const hourCounts = new Map<number, number>();
+  attendance.forEach((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    if (checkIn) {
+      const hour = checkIn.getHours();
+      hourCounts.set(hour, (hourCounts.get(hour) || 0) + 1);
+    }
+  });
+  let peakHour = "N/A";
+  let maxCount = 0;
+  hourCounts.forEach((count, hour) => {
+    if (count > maxCount) {
+      maxCount = count;
+      peakHour = `${hour}:00`;
+    }
+  });
+
+  // Real heatmap data from attendance
+  const heatmapData: { hour: number; day: string; count: number }[] = [];
+  attendance.forEach((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    if (!checkIn) return;
+    const dayOfWeek = checkIn.getDay();
+    const dayName = days[dayOfWeek === 0 ? 6 : dayOfWeek - 1];
+    const hour = checkIn.getHours();
+    if (hour >= 6 && hour < 20) {
+      const existing = heatmapData.find((h) => h.hour === hour && h.day === dayName);
+      if (existing) {
+        existing.count++;
+      } else {
+        heatmapData.push({ hour, day: dayName, count: 1 });
+      }
+    }
+  });
+  // Fill missing slots with 0
+  days.forEach((day) => {
+    for (let hour = 6; hour < 20; hour++) {
+      if (!heatmapData.find((h) => h.hour === hour && h.day === day)) {
+        heatmapData.push({ hour, day, count: 0 });
+      }
+    }
+  });
+
+  // Calculate member frequency from attendance (last 7 days)
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const memberCheckIns = new Map<string, number>();
+  attendance.forEach((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    if (checkIn && checkIn >= weekAgo) {
+      const count = memberCheckIns.get(a.memberId) || 0;
+      memberCheckIns.set(a.memberId, count + 1);
+    }
+  });
+  const regular = Array.from(memberCheckIns.values()).filter((c) => c >= 5).length;
+  const moderate = Array.from(memberCheckIns.values()).filter((c) => c >= 3 && c < 5).length;
+  const irregular = Array.from(memberCheckIns.values()).filter((c) => c >= 1 && c < 3).length;
+  const inactive = members.length - regular - moderate - irregular;
   const memberFrequency = [
-    { category: "Regular (5+ days/week)", count: 142, color: "bg-chart-3 text-white" },
-    { category: "Moderate (3-4 days/week)", count: 98, color: "bg-chart-1 text-white" },
-    { category: "Irregular (1-2 days/week)", count: 67, color: "bg-chart-4 text-white" },
-    { category: "Inactive (0 days)", count: 35, color: "bg-destructive text-destructive-foreground" },
+    { category: "Regular (5+ days/week)", count: regular, color: "bg-chart-3 text-white" },
+    { category: "Moderate (3-4 days/week)", count: moderate, color: "bg-chart-1 text-white" },
+    { category: "Irregular (1-2 days/week)", count: irregular, color: "bg-chart-4 text-white" },
+    { category: "Inactive (0 days)", count: inactive, color: "bg-destructive text-destructive-foreground" },
   ];
 
-  //todo: remove mock functionality
-  const absentMembers = [
-    { name: "David Brown", lastVisit: new Date(2025, 9, 15), daysSince: 16 },
-    { name: "Lisa Anderson", lastVisit: new Date(2025, 9, 18), daysSince: 13 },
-    { name: "James Wilson", lastVisit: new Date(2025, 9, 20), daysSince: 11 },
-    { name: "Maria Garcia", lastVisit: new Date(2025, 9, 22), daysSince: 9 },
-  ];
+  // Find absent members (7+ days since last visit)
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const memberLastVisit = new Map<string, Date>();
+  attendance.forEach((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    if (checkIn) {
+      const existing = memberLastVisit.get(a.memberId);
+      if (!existing || checkIn > existing) {
+        memberLastVisit.set(a.memberId, checkIn);
+      }
+    }
+  });
+  const absentMembers = members
+    .map((m: any) => {
+      const lastVisit = memberLastVisit.get(m.id);
+      if (!lastVisit || lastVisit < sevenDaysAgo) {
+        const daysSince = lastVisit
+          ? Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24))
+          : Infinity;
+        return {
+          name: m.name,
+          lastVisit: lastVisit || null,
+          daysSince,
+        };
+      }
+      return null;
+    })
+    .filter((m): m is { name: string; lastVisit: Date | null; daysSince: number } => m !== null && m.daysSince >= 7)
+    .sort((a, b) => b.daysSince - a.daysSince)
+    .slice(0, 10); // Top 10 absent members
 
   const filteredCheckIns = todayCheckIns.filter((checkIn) =>
     checkIn.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -163,25 +259,32 @@ export default function Attendance() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Today's Check-ins"
-          value={87}
+          value={todayCheckIns.length}
           icon={UserCheck}
-          subtitle="vs 82 yesterday"
+          subtitle={yesterdayCheckIns.length > 0 ? `vs ${yesterdayCheckIns.length} yesterday` : undefined}
+          trend={
+            yesterdayCheckIns.length > 0
+              ? {
+                  value: Math.abs(((todayCheckIns.length - yesterdayCheckIns.length) / yesterdayCheckIns.length) * 100),
+                  isPositive: todayCheckIns.length > yesterdayCheckIns.length,
+                }
+              : undefined
+          }
         />
         <MetricCard
           title="Currently In Gym"
-          value={42}
+          value={currentlyInGym.length}
           icon={Users}
           subtitle="Active now"
         />
         <MetricCard
           title="Avg. Daily Check-ins"
-          value={153}
+          value={avgDailyCheckIns}
           icon={Calendar}
-          trend={{ value: 8.5, isPositive: true }}
         />
         <MetricCard
           title="Peak Hour"
-          value="6-8 PM"
+          value={peakHour}
           icon={Clock}
           subtitle="Most active time"
         />
@@ -242,7 +345,7 @@ export default function Attendance() {
                     <div
                       className="h-full bg-chart-1 transition-all"
                       style={{
-                        width: `${(freq.count / 342) * 100}%`,
+                        width: `${members.length > 0 ? (freq.count / members.length) * 100 : 0}%`,
                       }}
                     />
                   </div>
@@ -335,25 +438,42 @@ export default function Attendance() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {absentMembers.map((member, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-4 border rounded-md hover-elevate"
-              >
-                <div className="space-y-1">
-                  <div className="font-medium">{member.name}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Last visit: {format(member.lastVisit, "MMM dd, yyyy")}
+            {absentMembers.length > 0 ? (
+              absentMembers.map((member, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 border rounded-md hover-elevate"
+                >
+                  <div className="space-y-1">
+                    <div className="font-medium">{member.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {member.lastVisit
+                        ? `Last visit: ${format(member.lastVisit, "MMM dd, yyyy")}`
+                        : "Never visited"}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="destructive">{member.daysSince} days ago</Badge>
-                  <Button size="sm" variant="outline" data-testid={`button-contact-${index}`}>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="destructive">{member.daysSince} days ago</Badge>
+                    <Button size="sm" variant="outline" data-testid={`button-contact-${index}`} onClick={() => {
+                      const foundMember = members.find((m: any) => m.name === member.name);
+                      if (foundMember?.phone) {
+                        window.open(`tel:${foundMember.phone}`, "_blank");
+                      } else {
+                        toast({
+                          title: "No phone number",
+                          description: "Phone number not available for this member",
+                          variant: "destructive",
+                        });
+                      }
+                    }}>
                     Contact
                   </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">No absent members</div>
+            )}
           </div>
         </CardContent>
       </Card>

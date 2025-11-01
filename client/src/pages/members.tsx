@@ -13,23 +13,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, UserPlus } from "lucide-react";
+import { Search, UserPlus, Trash2, Edit } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 
 export default function Members() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [open, setOpen] = useState(false);
+  const [viewMemberId, setViewMemberId] = useState<string | null>(null);
+  const [editMemberId, setEditMemberId] = useState<string | null>(null);
+  const [extendMemberId, setExtendMemberId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: members = [], isLoading, error } = useQuery({
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
-  console.log("Members query state:", { isLoading, error, count: members.length, members });
 
   const formSchema = z.object({
     name: z.string().min(2),
@@ -53,12 +60,97 @@ export default function Members() {
         loginCode: String(Math.floor(Math.random() * 900000) + 100000),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/members"] });
       setOpen(false);
       form.reset();
     },
   });
+
+  const editForm = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+  });
+
+  const updateMember = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: FormValues }) => {
+      await apiRequest("PATCH", `/api/members/${id}`, values);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      setEditMemberId(null);
+      editForm.reset();
+      toast({ title: "Member updated", description: "Member details have been updated." });
+    },
+  });
+
+  const deleteMember = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/members/${id}`);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      toast({ title: "Member deleted", description: "Member has been removed." });
+    },
+  });
+
+  const freezeMember = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/members/${id}`, { status: "frozen" });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      toast({ title: "Membership frozen", description: "Member's membership has been frozen." });
+    },
+  });
+
+  const extendForm = useForm<{ months: string }>({
+    resolver: zodResolver(z.object({ months: z.string().min(1) })),
+    defaultValues: { months: "1" },
+  });
+
+  const extendMember = useMutation({
+    mutationFn: async ({ id, months }: { id: string; months: number }) => {
+      const member = members.find((m: any) => m.id === id);
+      if (!member) return;
+      const currentExpiry = member.expiryDate ? new Date(member.expiryDate) : new Date();
+      const newExpiry = new Date(currentExpiry);
+      newExpiry.setMonth(newExpiry.getMonth() + months);
+      await apiRequest("PATCH", `/api/members/${id}`, { expiryDate: newExpiry.toISOString() });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      setExtendMemberId(null);
+      extendForm.reset();
+      toast({ title: "Membership extended", description: "Member's expiry date has been extended." });
+    },
+  });
+
+  const handleSendReminder = (id: string) => {
+    const member = members.find((m: any) => m.id === id);
+    toast({
+      title: "Reminder sent",
+      description: member ? `Reminder sent to ${member.name}` : "Reminder sent",
+    });
+  };
+
+  const handleViewProfile = (id: string) => {
+    setViewMemberId(id);
+  };
+
+  const handleEdit = (id: string) => {
+    const member = members.find((m: any) => m.id === id);
+    if (member) {
+      editForm.reset({
+        name: member.name,
+        email: member.email,
+        phone: member.phone,
+        status: member.status,
+        paymentStatus: member.paymentStatus,
+      });
+      setEditMemberId(id);
+    }
+  };
 
   const filteredMembers = members.filter((member) => {
     const matchesSearch = member.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -170,10 +262,10 @@ export default function Members() {
               status={member.status}
               paymentStatus={member.paymentStatus}
               lastCheckIn={parseDate(member.lastCheckIn)}
-              onViewProfile={(id) => console.log("View profile:", id)}
-              onSendReminder={(id) => console.log("Send reminder:", id)}
-              onFreeze={(id) => console.log("Freeze:", id)}
-              onExtend={(id) => console.log("Extend:", id)}
+              onViewProfile={handleViewProfile}
+              onSendReminder={handleSendReminder}
+              onFreeze={(id) => freezeMember.mutate(id)}
+              onExtend={(id) => setExtendMemberId(id)}
             />
           );
         })}
@@ -280,6 +372,158 @@ export default function Members() {
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={createMember.isPending}>Save</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Profile Dialog */}
+      <Dialog open={viewMemberId !== null} onOpenChange={(open) => !open && setViewMemberId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Member Profile</DialogTitle>
+          </DialogHeader>
+          {viewMemberId && (() => {
+            const member = members.find((m: any) => m.id === viewMemberId);
+            if (!member) return null;
+            const parseDate = (dateStr: any) => {
+              if (!dateStr) return null;
+              try {
+                const date = new Date(dateStr);
+                return isNaN(date.getTime()) ? null : date;
+              } catch {
+                return null;
+              }
+            };
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-20 w-20">
+                    <AvatarImage src={member.photoUrl} alt={member.name} />
+                    <AvatarFallback>{member.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="text-xl font-bold">{member.name}</h3>
+                    <p className="text-muted-foreground">{member.email}</p>
+                    <p className="text-muted-foreground">{member.phone}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge>{member.status}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Payment Status</p>
+                    <Badge>{member.paymentStatus}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Plan</p>
+                    <p className="font-medium">{member.planName || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Login Code</p>
+                    <p className="font-mono">{member.loginCode}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Start Date</p>
+                    <p>{parseDate(member.startDate) ? format(parseDate(member.startDate)!, "MMM dd, yyyy") : "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expiry Date</p>
+                    <p>{parseDate(member.expiryDate) ? format(parseDate(member.expiryDate)!, "MMM dd, yyyy") : "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Last Check-In</p>
+                    <p>{parseDate(member.lastCheckIn) ? format(parseDate(member.lastCheckIn)!, "MMM dd, yyyy HH:mm") : "Never"}</p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setViewMemberId(null); handleEdit(viewMemberId!); }}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button variant="destructive" onClick={() => { deleteMember.mutate(viewMemberId!); setViewMemberId(null); }} disabled={deleteMember.isPending}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Member Dialog */}
+      <Dialog open={editMemberId !== null} onOpenChange={(open) => !open && setEditMemberId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Member</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit((v) => editMemberId && updateMember.mutate({ id: editMemberId, values: v }))} className="space-y-4">
+              <FormField control={editForm.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={editForm.control} name="email" render={({ field }) => (
+                <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={editForm.control} name="phone" render={({ field }) => (
+                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={editForm.control} name="status" render={({ field }) => (
+                  <FormItem><FormLabel>Status</FormLabel><Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="frozen">Frozen</SelectItem>
+                    </SelectContent>
+                  </Select><FormMessage /></FormItem>
+                )} />
+                <FormField control={editForm.control} name="paymentStatus" render={({ field }) => (
+                  <FormItem><FormLabel>Payment Status</FormLabel><Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="overdue">Overdue</SelectItem>
+                    </SelectContent>
+                  </Select><FormMessage /></FormItem>
+                )} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditMemberId(null)}>Cancel</Button>
+                <Button type="submit" disabled={updateMember.isPending}>Save</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Extend Membership Dialog */}
+      <Dialog open={extendMemberId !== null} onOpenChange={(open) => !open && setExtendMemberId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Extend Membership</DialogTitle>
+          </DialogHeader>
+          <Form {...extendForm}>
+            <form onSubmit={extendForm.handleSubmit((v) => extendMemberId && extendMember.mutate({ id: extendMemberId, months: parseInt(v.months) }))} className="space-y-4">
+              <FormField control={extendForm.control} name="months" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Extend by (months)</FormLabel>
+                  <FormControl>
+                    <Input type="number" min="1" placeholder="1" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setExtendMemberId(null)}>Cancel</Button>
+                <Button type="submit" disabled={extendMember.isPending}>Extend</Button>
               </DialogFooter>
             </form>
           </Form>

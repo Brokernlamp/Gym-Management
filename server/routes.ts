@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema } from "@shared/schema";
+import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema, settingsSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<void> {
 	// helper
@@ -128,6 +128,39 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 		const ok = await storage.deleteAttendance(req.params.id);
 		if (!ok) return res.status(404).json({ message: "Not found" });
 		return res.status(204).end();
+	});
+
+	// settings
+	app.get("/api/settings", async (_req: Request, res: Response) => {
+		try {
+			const settings = await storage.getSettings();
+			return jsonOk(res, settings);
+		} catch (err) {
+			return res.status(500).json({ message: err instanceof Error ? err.message : "Failed to get settings" });
+		}
+	});
+
+	app.post("/api/settings", async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const data = settingsSchema.parse(req.body);
+			const updated = await storage.updateSettings(data);
+			return jsonOk(res, updated);
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	// member lookup by login code (for user attendance)
+	app.get("/api/members/login/:code", async (req: Request, res: Response) => {
+		try {
+			const member = await storage.getMemberByLoginCode(req.params.code);
+			if (!member) {
+				return res.status(404).json({ message: "Member not found" });
+			}
+			return jsonOk(res, member);
+		} catch (err) {
+			return res.status(500).json({ message: err instanceof Error ? err.message : "Failed to find member" });
+		}
 	});
 
 	// health: verify DB connectivity quickly

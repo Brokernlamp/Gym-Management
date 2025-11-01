@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,70 +35,121 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { format, startOfMonth, eachMonthOfInterval, subMonths, endOfMonth } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState("last-12-months");
+  const { toast } = useToast();
 
-  //todo: remove mock functionality
-  const membershipGrowth = [
-    { month: "Nov '24", members: 280, newSignups: 15, churn: 8 },
-    { month: "Dec '24", members: 287, newSignups: 18, churn: 11 },
-    { month: "Jan '25", members: 294, newSignups: 22, churn: 15 },
-    { month: "Feb '25", members: 301, newSignups: 20, churn: 13 },
-    { month: "Mar '25", members: 308, newSignups: 25, churn: 18 },
-    { month: "Apr '25", members: 315, newSignups: 28, churn: 21 },
-    { month: "May '25", members: 322, newSignups: 24, churn: 17 },
-    { month: "Jun '25", members: 329, newSignups: 19, churn: 12 },
-    { month: "Jul '25", members: 334, newSignups: 21, churn: 16 },
-    { month: "Aug '25", members: 339, newSignups: 23, churn: 18 },
-    { month: "Sep '25", members: 344, newSignups: 26, churn: 21 },
-    { month: "Oct '25", members: 342, newSignups: 20, churn: 22 },
-  ];
+  const { data: members = [] } = useQuery({
+    queryKey: ["/api/members"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
 
-  //todo: remove mock functionality
-  const demographics = {
-    age: [
-      { range: "18-25", count: 89, color: "hsl(var(--chart-1))" },
-      { range: "26-35", count: 142, color: "hsl(var(--chart-2))" },
-      { range: "36-45", count: 78, color: "hsl(var(--chart-3))" },
-      { range: "46-55", count: 25, color: "hsl(var(--chart-4))" },
-      { range: "56+", count: 8, color: "hsl(var(--chart-5))" },
-    ],
-    gender: [
-      { name: "Male", value: 215, color: "hsl(var(--chart-1))" },
-      { name: "Female", value: 127, color: "hsl(var(--chart-2))" },
-    ],
+  const { data: payments = [] } = useQuery({
+    queryKey: ["/api/payments"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const { data: attendance = [] } = useQuery({
+    queryKey: ["/api/attendance"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  // Parse dates safely
+  const parseDate = (dateStr: any) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
   };
 
-  //todo: remove mock functionality
-  const churnReasons = [
-    { reason: "Relocation", count: 45 },
-    { reason: "Financial", count: 38 },
-    { reason: "Time Constraints", count: 32 },
-    { reason: "Health Issues", count: 18 },
-    { reason: "Dissatisfaction", count: 12 },
-    { reason: "Other", count: 15 },
-  ];
+  // Calculate membership growth (last 12 months)
+  const now = new Date();
+  const twelveMonthsAgo = subMonths(now, 11);
+  const months = eachMonthOfInterval({ start: twelveMonthsAgo, end: now });
+  const membershipGrowth = months.map((month) => {
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(month);
+    
+    // Total members at end of month (members who started before or during month and haven't expired)
+    const totalMembers = members.filter((m: any) => {
+      const startDate = parseDate(m.startDate);
+      const expiryDate = parseDate(m.expiryDate);
+      return startDate && startDate <= monthEnd && (!expiryDate || expiryDate > monthEnd);
+    }).length;
+    
+    // New signups in this month
+    const newSignups = members.filter((m: any) => {
+      const startDate = parseDate(m.startDate);
+      return startDate && startDate >= monthStart && startDate <= monthEnd;
+    }).length;
+    
+    // Churn in this month (expired members)
+    const churn = members.filter((m: any) => {
+      const expiryDate = parseDate(m.expiryDate);
+      return expiryDate && expiryDate >= monthStart && expiryDate <= monthEnd;
+    }).length;
+    
+    return {
+      month: format(month, "MMM 'yy"),
+      members: totalMembers,
+      newSignups,
+      churn,
+    };
+  });
 
-  //todo: remove mock functionality
-  const peakSeasons = [
-    { month: "Jan", type: "Peak", members: 294 },
-    { month: "Feb", type: "Normal", members: 301 },
-    { month: "Mar", type: "Normal", members: 308 },
-    { month: "Apr", type: "Peak", members: 315 },
-    { month: "May", type: "Normal", members: 322 },
-    { month: "Jun", type: "Normal", members: 329 },
-    { month: "Jul", type: "Slow", members: 334 },
-    { month: "Aug", type: "Slow", members: 339 },
-    { month: "Sep", type: "Peak", members: 344 },
-    { month: "Oct", type: "Normal", members: 342 },
-  ];
+  // Calculate churn rate (expired members / total)
+  const expiredMembers = members.filter((m: any) => {
+    const expiryDate = parseDate(m.expiryDate);
+    return expiryDate && expiryDate < now;
+  }).length;
+  const totalMembers = members.length;
+  const churnRate = totalMembers > 0 ? ((expiredMembers / totalMembers) * 100).toFixed(1) : "0.0";
 
-  const totalChurn = churnReasons.reduce((sum, r) => sum + r.count, 0);
-  const churnRate = ((totalChurn / (342 + totalChurn)) * 100).toFixed(1);
-  const conversionRate = 68.5;
-  const lifetimeValue = 42500;
-  const npsScore = 72;
+  // Calculate lifetime value from payments (average total payments per member)
+  const paidPayments = payments.filter((p: any) => p.status === "paid");
+  const memberPayments = new Map<string, number>();
+  paidPayments.forEach((p: any) => {
+    const total = memberPayments.get(p.memberId) || 0;
+    memberPayments.set(p.memberId, total + Number(p.amount || 0));
+  });
+  const totalLifetimeValue = Array.from(memberPayments.values()).reduce((sum, val) => sum + val, 0);
+  const lifetimeValue = memberPayments.size > 0 ? Math.round(totalLifetimeValue / memberPayments.size) : 0;
+
+  // Peak seasons from attendance (monthly attendance counts)
+  const attendanceByMonth = new Map<string, number>();
+  attendance.forEach((a: any) => {
+    const checkIn = parseDate(a.checkInTime);
+    if (checkIn) {
+      const monthKey = format(checkIn, "MMM");
+      attendanceByMonth.set(monthKey, (attendanceByMonth.get(monthKey) || 0) + 1);
+    }
+  });
+  const avgAttendance = Array.from(attendanceByMonth.values()).reduce((sum, val) => sum + val, 0) / attendanceByMonth.size;
+  const peakSeasons = Array.from(attendanceByMonth.entries()).map(([month, count]) => ({
+    month,
+    type: count > avgAttendance * 1.2 ? "Peak" : count < avgAttendance * 0.8 ? "Slow" : "Normal",
+    members: Math.round(count / 30), // Approximate daily average * 30
+  })).sort((a, b) => {
+    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return monthOrder.indexOf(a.month) - monthOrder.indexOf(b.month);
+  });
+
+  // Demographics and churn reasons not tracked in DB - show empty/placeholder
+  const demographics = {
+    age: [], // Not tracked
+    gender: [], // Not tracked
+  };
+
+  const churnReasons: { reason: string; count: number }[] = []; // Not tracked
+  const totalChurn = expiredMembers;
+  const conversionRate = 0; // Not tracked - lead conversion requires lead tracking
+  const npsScore = 0; // Not tracked - requires survey data
 
   return (
     <div className="space-y-6">
@@ -118,11 +171,26 @@ export default function Reports() {
               <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" data-testid="button-export-pdf">
+          <Button variant="outline" data-testid="button-export-pdf" onClick={() => {
+            toast({ title: "Export PDF", description: "PDF export feature coming soon" });
+          }}>
             <FileText className="h-4 w-4 mr-2" />
             Export PDF
           </Button>
-          <Button variant="outline" data-testid="button-export-excel">
+          <Button variant="outline" data-testid="button-export-excel" onClick={() => {
+            const csv = [
+              ["Month", "Total Members", "New Signups", "Churn"].join(","),
+              ...membershipGrowth.map((m) => [m.month, m.members, m.newSignups, m.churn].join(",")),
+            ].join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `reports-${format(new Date(), "yyyy-MM-dd")}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ title: "Report exported", description: "Reports data downloaded as CSV." });
+          }}>
             <Download className="h-4 w-4 mr-2" />
             Export Excel
           </Button>
@@ -134,25 +202,23 @@ export default function Reports() {
           title="Churn Rate"
           value={`${churnRate}%`}
           icon={TrendingUp}
-          trend={{ value: -2.3, isPositive: true }}
         />
         <MetricCard
           title="Lead Conversion"
-          value={`${conversionRate}%`}
+          value="N/A"
           icon={Users}
-          subtitle="Inquiry to paid member"
+          subtitle="Not tracked"
         />
         <MetricCard
           title="Lifetime Value"
           value={`₹${lifetimeValue.toLocaleString()}`}
           icon={DollarSign}
-          trend={{ value: 15.2, isPositive: true }}
         />
         <MetricCard
           title="NPS Score"
-          value={npsScore}
+          value="N/A"
           icon={BarChart3}
-          subtitle="Net Promoter Score"
+          subtitle="Not tracked"
         />
       </div>
 
@@ -216,28 +282,9 @@ export default function Reports() {
             <CardTitle>Age Demographics</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={demographics.age}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="range"
-                  className="text-xs"
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                />
-                <YAxis
-                  className="text-xs"
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
-                <Bar dataKey="count" fill="hsl(var(--chart-1))" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="text-center py-12 text-muted-foreground">
+              Age demographics not tracked in database
+            </div>
           </CardContent>
         </Card>
 
@@ -246,31 +293,9 @@ export default function Reports() {
             <CardTitle>Gender Distribution</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={demographics.gender}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {demographics.gender.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="text-center py-12 text-muted-foreground">
+              Gender demographics not tracked in database
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -281,25 +306,17 @@ export default function Reports() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {churnReasons.map((reason) => (
-              <div key={reason.reason} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{reason.reason}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono">{reason.count}</span>
-                    <span className="text-muted-foreground">
-                      ({((reason.count / totalChurn) * 100).toFixed(1)}%)
-                    </span>
-                  </div>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-chart-5 transition-all"
-                    style={{ width: `${(reason.count / totalChurn) * 100}%` }}
-                  />
+            {totalChurn > 0 ? (
+              <div className="text-center py-8">
+                <div className="text-2xl font-bold">{totalChurn}</div>
+                <div className="text-sm text-muted-foreground">Total expired members</div>
+                <div className="mt-4 text-xs text-muted-foreground">
+                  Churn reasons not tracked in database
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">No churn data available</div>
+            )}
           </div>
         </CardContent>
       </Card>

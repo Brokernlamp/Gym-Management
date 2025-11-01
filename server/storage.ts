@@ -46,6 +46,11 @@ export interface IStorage {
   createAttendance(record: InsertAttendance): Promise<Attendance>;
   updateAttendance(id: string, record: Partial<InsertAttendance>): Promise<Attendance | undefined>;
   deleteAttendance(id: string): Promise<boolean>;
+
+  // settings
+  getSettings(): Promise<Record<string, any>>;
+  updateSettings(settings: Record<string, any>): Promise<Record<string, any>>;
+  getMemberByLoginCode(loginCode: string): Promise<Member | undefined>;
 }
 
 export class TursoStorage implements IStorage {
@@ -422,6 +427,74 @@ export class TursoStorage implements IStorage {
   async deleteAttendance(id: string): Promise<boolean> {
     const r = await this.db.execute({ sql: `DELETE FROM attendance WHERE id = ?`, args: [id] });
     return (r.rowsAffected ?? 0) > 0;
+  }
+
+  // Settings - simple key-value storage
+  async getSettings(): Promise<Record<string, any>> {
+    try {
+      // Check if settings table exists, if not create it
+      await this.db.execute({
+        sql: `CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )`,
+      });
+      
+      const result = await this.db.execute({ sql: `SELECT key, value FROM settings` });
+      const settings: Record<string, any> = {};
+      
+      for (const row of result.rows as any[]) {
+        const key = row.key;
+        let value = row.value;
+        // Try to parse JSON, otherwise use as string
+        try {
+          value = JSON.parse(value);
+        } catch {
+          // Keep as string
+        }
+        settings[key] = value;
+      }
+      
+      return settings;
+    } catch (err) {
+      console.error("Error getting settings:", err);
+      return {};
+    }
+  }
+
+  async updateSettings(newSettings: Record<string, any>): Promise<Record<string, any>> {
+    try {
+      await this.db.execute({
+        sql: `CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )`,
+      });
+
+      // Update or insert each setting
+      for (const [key, value] of Object.entries(newSettings)) {
+        const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        await this.db.execute({
+          sql: `INSERT INTO settings (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          args: [key, valueStr],
+        });
+      }
+
+      return await this.getSettings();
+    } catch (err) {
+      console.error("Error updating settings:", err);
+      throw err;
+    }
+  }
+
+  async getMemberByLoginCode(loginCode: string): Promise<Member | undefined> {
+    const result = await this.db.execute({
+      sql: `SELECT * FROM members WHERE login_code = ?`,
+      args: [loginCode],
+    });
+    const row = result.rows[0];
+    return row ? (this.mapMember(row) as any) : undefined;
   }
 }
 

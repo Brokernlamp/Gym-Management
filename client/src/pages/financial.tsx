@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,28 +41,13 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from "date-fns";
 
 export default function Financial() {
   const [paymentMethod, setPaymentMethod] = useState("all");
   const [open, setOpen] = useState(false);
-
-  //todo: remove mock functionality
-  const revenueByPlan = [
-    { name: "Premium Annual", value: 145000, color: "hsl(var(--chart-1))" },
-    { name: "Basic Monthly", value: 89000, color: "hsl(var(--chart-2))" },
-    { name: "Premium Quarterly", value: 65000, color: "hsl(var(--chart-3))" },
-    { name: "Personal Training", value: 25000, color: "hsl(var(--chart-4))" },
-  ];
-
-  //todo: remove mock functionality
-  const monthlyRevenue = [
-    { month: "May", revenue: 245000, expenses: 180000 },
-    { month: "Jun", revenue: 282000, expenses: 175000 },
-    { month: "Jul", revenue: 268000, expenses: 185000 },
-    { month: "Aug", revenue: 305000, expenses: 190000 },
-    { month: "Sep", revenue: 291000, expenses: 182000 },
-    { month: "Oct", revenue: 324000, expenses: 195000 },
-  ];
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const { toast } = useToast();
 
   const { data: payments = [] } = useQuery({
     queryKey: ["/api/payments"],
@@ -87,8 +73,9 @@ export default function Financial() {
         paidDate: values.status === "paid" ? new Date().toISOString() : null,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/payments"] });
       setOpen(false);
       form.reset();
     },
@@ -97,6 +84,60 @@ export default function Financial() {
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+
+  // Parse dates safely
+  const parseDate = (dateStr: any) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
+  };
+
+  // Calculate revenue by plan from paid payments
+  const paidPayments = payments.filter((p: any) => p.status === "paid");
+  const planRevenue = new Map<string, number>();
+  paidPayments.forEach((p: any) => {
+    const plan = p.planName || "Unknown Plan";
+    planRevenue.set(plan, (planRevenue.get(plan) || 0) + Number(p.amount || 0));
+  });
+  const chartColors = [
+    "hsl(var(--chart-1))",
+    "hsl(var(--chart-2))",
+    "hsl(var(--chart-3))",
+    "hsl(var(--chart-4))",
+    "hsl(var(--chart-5))",
+  ];
+  const revenueByPlan = Array.from(planRevenue.entries())
+    .map(([name, value], idx) => ({
+      name,
+      value,
+      color: chartColors[idx % chartColors.length],
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  // Calculate monthly revenue for last 6 months
+  const now = new Date();
+  const sixMonthsAgo = subMonths(now, 5);
+  const months = eachMonthOfInterval({ start: sixMonthsAgo, end: now });
+  const monthlyRevenue = months.map((month) => {
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(month);
+    const monthRevenue = paidPayments
+      .filter((p: any) => {
+        const paid = parseDate(p.paidDate);
+        return paid && paid >= monthStart && paid <= monthEnd;
+      })
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    return {
+      month: format(month, "MMM"),
+      revenue: monthRevenue,
+      expenses: 0, // Expenses not tracked in DB - set to 0
+    };
+  });
+
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
   const pendingPayments = payments
     .filter((p: any) => p.status === "pending" || p.status === "overdue")
@@ -109,39 +150,41 @@ export default function Financial() {
       planName: p.planName ?? undefined,
     }));
 
-  //todo: remove mock functionality
-  const recentTransactions = [
-    {
-      id: "1",
-      memberName: "Sarah Johnson",
-      amount: 5000,
-      method: "UPI",
-      date: new Date(2025, 9, 30),
-      planName: "Premium Annual",
-    },
-    {
-      id: "2",
-      memberName: "Michael Chen",
-      amount: 3000,
-      method: "Card",
-      date: new Date(2025, 9, 30),
-      planName: "Basic Monthly",
-    },
-    {
-      id: "3",
-      memberName: "Emma Wilson",
-      amount: 4500,
-      method: "Cash",
-      date: new Date(2025, 9, 29),
-      planName: "Premium Quarterly",
-    },
-  ];
+  // Recent transactions - last 10 paid payments
+  const recentTransactions = paidPayments
+    .slice()
+    .sort((a: any, b: any) => {
+      const dateA = parseDate(a.paidDate);
+      const dateB = parseDate(b.paidDate);
+      if (!dateA || !dateB) return 0;
+      return dateB.getTime() - dateA.getTime();
+    })
+    .slice(0, 10)
+    .map((p: any) => {
+      const member = memberById.get(p.memberId);
+      return {
+        id: p.id,
+        memberName: member?.name || p.memberId,
+        amount: Number(p.amount || 0),
+        method: p.paymentMethod || "Unknown",
+        date: parseDate(p.paidDate),
+        planName: p.planName || "Unknown Plan",
+      };
+    })
+    .filter((t) => t.date); // Only include transactions with valid dates
 
-  const totalRevenue = monthlyRevenue[monthlyRevenue.length - 1].revenue;
-  const totalExpenses = monthlyRevenue[monthlyRevenue.length - 1].expenses;
-  const profitMargin = ((totalRevenue - totalExpenses) / totalRevenue) * 100;
-  const collectionRate = 87.5;
-  const avgRevenuePerMember = Math.round(totalRevenue / 342);
+  // Calculate real metrics
+  const currentMonthData = monthlyRevenue[monthlyRevenue.length - 1];
+  const totalRevenue = currentMonthData.revenue;
+  const totalExpenses = currentMonthData.expenses;
+  const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
+  
+  const totalPayments = payments.length;
+  const paidCount = paidPayments.length;
+  const collectionRate = totalPayments > 0 ? (paidCount / totalPayments) * 100 : 0;
+  
+  const activeMemberCount = members.filter((m: any) => m.status === "active").length;
+  const avgRevenuePerMember = activeMemberCount > 0 ? Math.round(totalRevenue / activeMemberCount) : 0;
 
   return (
     <div className="space-y-6">
@@ -151,7 +194,34 @@ export default function Financial() {
           <p className="text-muted-foreground">Track revenue, expenses, and payments</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" data-testid="button-export-financial">
+          <Button variant="outline" data-testid="button-export-financial" onClick={() => {
+            const csv = [
+              ["Member", "Amount", "Method", "Status", "Date"].join(","),
+              ...paidPayments.slice().sort((a: any, b: any) => {
+                const dateA = parseDate(a.paidDate);
+                const dateB = parseDate(b.paidDate);
+                if (!dateA || !dateB) return 0;
+                return dateB.getTime() - dateA.getTime();
+              }).map((p: any) => {
+                const member = memberById.get(p.memberId);
+                return [
+                  member?.name || p.memberId,
+                  p.amount || 0,
+                  p.paymentMethod || "Unknown",
+                  p.status,
+                  parseDate(p.paidDate) ? format(parseDate(p.paidDate)!, "yyyy-MM-dd") : "",
+                ].join(",");
+              }),
+            ].join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `financial-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ title: "Report exported", description: "Financial report downloaded as CSV." });
+          }}>
             <Download className="h-4 w-4 mr-2" />
             Export Report
           </Button>
@@ -167,13 +237,11 @@ export default function Financial() {
           title="Monthly Revenue"
           value={`₹${totalRevenue.toLocaleString()}`}
           icon={DollarSign}
-          trend={{ value: 11.3, isPositive: true }}
         />
         <MetricCard
           title="Profit Margin"
           value={`${profitMargin.toFixed(1)}%`}
           icon={TrendingUp}
-          trend={{ value: 3.2, isPositive: true }}
         />
         <MetricCard
           title="Collection Rate"
@@ -275,9 +343,15 @@ export default function Financial() {
           </div>
         </CardHeader>
         <CardContent>
-          <PaymentTable
+            <PaymentTable
             payments={pendingPayments}
-            onSendReminder={(id) => console.log("Send reminder:", id)}
+            onSendReminder={(id) => {
+              const payment = pendingPayments.find((p) => p.id === id);
+              toast({
+                title: "Reminder sent",
+                description: payment ? `Payment reminder sent to ${payment.memberName}` : "Reminder sent",
+              });
+            }}
           />
         </CardContent>
       </Card>
@@ -370,64 +444,40 @@ export default function Financial() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle>Recent Transactions</CardTitle>
-          <Button size="sm" variant="outline" data-testid="button-view-all-transactions">
-            View All
+          <Button size="sm" variant="outline" data-testid="button-view-all-transactions" onClick={() => setShowAllTransactions(!showAllTransactions)}>
+            {showAllTransactions ? "Show Less" : "View All"}
           </Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {recentTransactions.map((transaction) => (
-              <div
-                key={transaction.id}
-                className="flex items-center justify-between p-4 border rounded-md hover-elevate"
-              >
-                <div className="space-y-1">
-                  <div className="font-medium">{transaction.memberName}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {transaction.planName} • {transaction.method}
+            {recentTransactions.length > 0 ? (
+              (showAllTransactions ? recentTransactions : recentTransactions.slice(0, 5)).map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="flex items-center justify-between p-4 border rounded-md hover-elevate"
+                >
+                  <div className="space-y-1">
+                    <div className="font-medium">{transaction.memberName}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {transaction.planName} • {transaction.method}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold font-mono">₹{transaction.amount.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {transaction.date ? format(transaction.date, "MMM dd, yyyy") : "N/A"}
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold font-mono">₹{transaction.amount.toLocaleString()}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {transaction.date.toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">No recent transactions</div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Expense Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[
-              { category: "Rent", amount: 80000, percentage: 41 },
-              { category: "Staff Salaries", amount: 65000, percentage: 33 },
-              { category: "Utilities", amount: 25000, percentage: 13 },
-              { category: "Equipment Maintenance", amount: 15000, percentage: 8 },
-              { category: "Others", amount: 10000, percentage: 5 },
-            ].map((expense) => (
-              <div key={expense.category} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{expense.category}</span>
-                  <span className="font-mono">₹{expense.amount.toLocaleString()}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-chart-5 transition-all"
-                    style={{ width: `${expense.percentage}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Expense tracking not implemented in database - removed expense breakdown section */}
     </div>
   );
 }
