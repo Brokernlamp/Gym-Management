@@ -11,11 +11,27 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Handle both ESM (import.meta.url) and CommonJS (require.main) environments
+let __dirname: string;
+try {
+  // Try ESM approach first
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    const __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  } else {
+    // Fallback for CommonJS/bundled environments (like Netlify)
+    __dirname = process.cwd();
+  }
+} catch (error) {
+  // If fileURLToPath fails, use process.cwd() as fallback
+  __dirname = process.cwd();
+}
 
 // Session directory for storing auth state
-const AUTH_DIR = path.join(__dirname, "..", "auth_info_baileys");
+// Use /tmp on serverless platforms, otherwise use project directory
+const AUTH_DIR = process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
+  ? path.join("/tmp", "auth_info_baileys") // Use /tmp for serverless (Netlify, AWS Lambda)
+  : path.join(__dirname, "..", "auth_info_baileys"); // Use project directory for local/dev
 
 // Connection state tracking
 export let isWAConnected = false;
@@ -39,6 +55,12 @@ export async function initWhatsApp(): Promise<void> {
   try {
     console.log("🔧 Initializing WhatsApp connection...");
     console.log(`📁 Auth directory: ${AUTH_DIR}`);
+    
+    // Ensure auth directory exists
+    if (!fs.existsSync(AUTH_DIR)) {
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+      console.log(`📂 Created auth directory: ${AUTH_DIR}`);
+    }
     
     // Check if auth files exist
     const authFilesExist = fs.existsSync(AUTH_DIR) && fs.readdirSync(AUTH_DIR).length > 0;

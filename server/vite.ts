@@ -5,6 +5,24 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+import { fileURLToPath } from "url";
+
+// Handle both ESM and CommonJS environments for Netlify compatibility
+function getDirname(): string {
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.dirname) {
+      return import.meta.dirname;
+    } else if (typeof import.meta !== "undefined" && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    } else {
+      return process.cwd();
+    }
+  } catch {
+    return process.cwd();
+  }
+}
+
+const __dirname = getDirname();
 
 const viteLogger = createLogger();
 
@@ -46,7 +64,7 @@ export async function setupVite(app: Express, server: Server) {
 
     try {
       const clientTemplate = path.resolve(
-        import.meta.dirname,
+        __dirname,
         "..",
         "client",
         "index.html",
@@ -68,7 +86,7 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  const distPath = path.resolve(__dirname, "..", "dist", "public");
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
