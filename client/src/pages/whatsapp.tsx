@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { MessageSquare, Send, Eye, CheckCircle2, XCircle } from "lucide-react";
+import { MessageSquare, Send, Eye, CheckCircle2, XCircle, QrCode, Power, PowerOff } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function WhatsApp() {
   const { toast } = useToast();
@@ -31,7 +32,82 @@ export default function WhatsApp() {
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["/api/whatsapp/status"],
     queryFn: getQueryFn({ on401: "throw" }),
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: 3000, // Poll every 3 seconds
+  });
+
+  const isConnected = status?.connected === true;
+  const [previousConnected, setPreviousConnected] = useState<boolean | null>(null);
+
+  // Track connection status changes for toast notifications
+  useEffect(() => {
+    if (previousConnected === null) {
+      setPreviousConnected(isConnected);
+      return;
+    }
+
+    if (!previousConnected && isConnected) {
+      // Just connected
+      toast({
+        title: "WhatsApp Connected! ✅",
+        description: "Successfully connected to WhatsApp. You can now send messages.",
+      });
+      setPreviousConnected(true);
+    } else if (previousConnected && !isConnected) {
+      // Just disconnected
+      toast({
+        title: "WhatsApp Disconnected",
+        description: "WhatsApp connection has been lost.",
+        variant: "destructive",
+      });
+      setPreviousConnected(false);
+    } else {
+      setPreviousConnected(isConnected);
+    }
+  }, [isConnected, previousConnected, toast]);
+
+  // Connect/Generate QR mutation
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/connect", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Generating QR Code...",
+        description: "Please wait for the QR code to appear.",
+      });
+      // Refetch status after a short delay
+      setTimeout(() => refetchStatus(), 2000);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Connection failed",
+        description: error?.message || "Failed to generate QR code",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Disconnect mutation
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/disconnect", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "WhatsApp Disconnected",
+        description: "WhatsApp has been disconnected successfully.",
+      });
+      refetchStatus();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Disconnect failed",
+        description: error?.message || "Failed to disconnect WhatsApp",
+        variant: "destructive",
+      });
+    },
   });
 
   // Preview template mutation
@@ -94,8 +170,6 @@ export default function WhatsApp() {
     },
   });
 
-  const isConnected = status?.connected === true;
-
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -110,8 +184,8 @@ export default function WhatsApp() {
         <CardHeader>
           <CardTitle>Connection Status</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
             {isConnected ? (
               <>
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -123,15 +197,88 @@ export default function WhatsApp() {
                 <span className="text-lg font-medium">Disconnected ❌</span>
               </>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetchStatus()}
-              className="ml-auto"
-            >
-              Refresh
-            </Button>
+            <div className="flex gap-2 ml-auto">
+              {!isConnected && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => connectMutation.mutate()}
+                  disabled={connectMutation.isPending}
+                >
+                  <QrCode className="h-4 w-4 mr-2" />
+                  {connectMutation.isPending ? "Generating..." : "Generate QR Code"}
+                </Button>
+              )}
+              {isConnected && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => disconnectMutation.mutate()}
+                  disabled={disconnectMutation.isPending}
+                >
+                  <PowerOff className="h-4 w-4 mr-2" />
+                  {disconnectMutation.isPending ? "Disconnecting..." : "Disconnect"}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchStatus()}
+              >
+                Refresh
+              </Button>
+            </div>
           </div>
+
+          {/* QR Code Display */}
+          {!isConnected && status?.qr && (
+            <div className="border rounded-lg p-6 bg-muted/50">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="flex items-center gap-2">
+                  <QrCode className="h-5 w-5" />
+                  <h3 className="font-semibold">Scan QR Code to Connect</h3>
+                </div>
+                <div className="p-4 bg-white rounded-lg border-2 border-primary/20">
+                  <QRCodeSVG
+                    value={status.qr}
+                    size={256}
+                    level="H"
+                    includeMargin={true}
+                  />
+                </div>
+                <div className="text-center space-y-2 max-w-md">
+                  <p className="text-sm font-medium">Instructions:</p>
+                  <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Tap Menu (☰) or Settings</li>
+                    <li>Tap Linked Devices</li>
+                    <li>Tap Link a Device</li>
+                    <li>Scan this QR code</li>
+                  </ol>
+                  <p className="text-xs text-muted-foreground mt-4">
+                    QR code refreshes automatically. If it expires, refresh the page.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isConnected && !status?.qr && (
+            <div className="text-center py-8 space-y-4">
+              <div className="text-muted-foreground">
+                <p className="text-lg font-medium">No QR Code Available</p>
+                <p className="text-sm mt-2">Click "Generate QR Code" button to start connecting.</p>
+              </div>
+              <Button
+                variant="default"
+                onClick={() => connectMutation.mutate()}
+                disabled={connectMutation.isPending}
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                {connectMutation.isPending ? "Generating..." : "Generate QR Code"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

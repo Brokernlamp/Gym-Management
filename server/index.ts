@@ -50,14 +50,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize WhatsApp connection
-  try {
-    await initWhatsApp();
-    log("WhatsApp initialization started");
-  } catch (error) {
-    console.error("Failed to initialize WhatsApp:", error);
-    // Continue server startup even if WhatsApp fails
-  }
+  // Don't auto-initialize WhatsApp - wait for user to click "Generate QR Code"
+  // This allows manual control over when to connect
+  // try {
+  //   await initWhatsApp();
+  //   log("WhatsApp initialization started");
+  // } catch (error) {
+  //   console.error("Failed to initialize WhatsApp:", error);
+  //   // Continue server startup even if WhatsApp fails
+  // }
+  log("WhatsApp will be initialized when user clicks 'Generate QR Code'");
 
   // Initialize Google Sheets sync
   try {

@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema, settingsSchema, insertPlanSchema } from "@shared/schema";
-import { sendWhatsAppMessage, isWAConnected, currentQR } from "./whatsapp";
+import { sendWhatsAppMessage, isWAConnected, currentQR, forceReconnect, disconnectWhatsApp } from "./whatsapp";
 import { calculateDaysLeft, formatPhoneNumber } from "./whatsapp-handlers";
 import { getDb } from "./db";
 import { randomUUID } from "crypto";
@@ -444,6 +444,36 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 		} catch (err) {
 			return res.status(500).json({
 				message: err instanceof Error ? err.message : "Failed to get WhatsApp status",
+			});
+		}
+	});
+
+	app.post("/api/whatsapp/connect", async (req: Request, res: Response) => {
+		try {
+			console.log("POST /api/whatsapp/connect called");
+			await forceReconnect();
+			console.log("POST /api/whatsapp/connect - forceReconnect completed");
+			return jsonOk(res, { success: true, message: "Reconnection initiated. QR code will appear shortly." });
+		} catch (err) {
+			console.error("Error in /api/whatsapp/connect:", err);
+			const errorMessage = err instanceof Error ? err.message : "Failed to generate QR code";
+			console.error("Returning error response:", errorMessage);
+			return res.status(500).json({
+				success: false,
+				message: errorMessage,
+			});
+		}
+	});
+
+	app.post("/api/whatsapp/disconnect", async (_req: Request, res: Response, next: NextFunction) => {
+		try {
+			await disconnectWhatsApp();
+			return jsonOk(res, { success: true, message: "WhatsApp disconnected successfully." });
+		} catch (err) {
+			console.error("Error in /api/whatsapp/disconnect:", err);
+			return res.status(500).json({
+				success: false,
+				message: err instanceof Error ? err.message : "Failed to disconnect WhatsApp",
 			});
 		}
 	});

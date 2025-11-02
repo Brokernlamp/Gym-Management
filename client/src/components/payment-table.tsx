@@ -11,6 +11,22 @@ import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 
+// Helper function to safely parse and format dates
+function parseDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  try {
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+}
+
+function formatDate(date: any): string {
+  const parsed = parseDate(date);
+  return parsed ? format(parsed, "MMM dd, yyyy") : "—";
+}
+
 interface Payment {
   id: string;
   memberName: string;
@@ -59,7 +75,7 @@ export function PaymentTable({ payments, onSendReminder }: PaymentTableProps) {
                 <TableCell className="text-muted-foreground">{payment.planName}</TableCell>
                 <TableCell className="text-right font-mono">₹{payment.amount.toLocaleString()}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {format(payment.dueDate, "MMM dd, yyyy")}
+                  {formatDate(payment.dueDate)}
                 </TableCell>
                 <TableCell>
                   <Badge className={statusColors[payment.status]}>
