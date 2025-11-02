@@ -8,6 +8,7 @@ import {
   BarChart3,
   Settings,
   Package,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,6 +64,11 @@ const menuItems = [
     title: "Reports",
     url: "/reports",
     icon: BarChart3,
+  },
+  {
+    title: "WhatsApp",
+    url: "/whatsapp",
+    icon: MessageSquare,
   },
 ];
 

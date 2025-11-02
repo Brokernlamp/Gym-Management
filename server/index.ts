@@ -2,6 +2,8 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { initWhatsApp } from "./whatsapp";
+import { initGoogleSheets } from "./google-sheets";
 
 const app = express();
 
@@ -48,6 +50,24 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize WhatsApp connection
+  try {
+    await initWhatsApp();
+    log("WhatsApp initialization started");
+  } catch (error) {
+    console.error("Failed to initialize WhatsApp:", error);
+    // Continue server startup even if WhatsApp fails
+  }
+
+  // Initialize Google Sheets sync
+  try {
+    await initGoogleSheets();
+    log("Google Sheets initialization started");
+  } catch (error) {
+    console.error("Failed to initialize Google Sheets:", error);
+    // Continue server startup even if Google Sheets fails
+  }
+
   // Register routes first
   await registerRoutes(app);
 
