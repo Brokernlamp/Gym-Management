@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema, settingsSchema } from "@shared/schema";
+import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema, settingsSchema, insertPlanSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<void> {
 	// helper
@@ -162,6 +162,45 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 			return res.status(500).json({ message: err instanceof Error ? err.message : "Failed to find member" });
 		}
 	});
+
+	// plans
+	app.get("/api/plans", async (_req: Request, res: Response) => {
+		const items = await storage.listPlans();
+		return jsonOk(res, items);
+	});
+
+	app.get("/api/plans/:id", async (req: Request, res: Response) => {
+		const plan = await storage.getPlan(req.params.id);
+		if (!plan) return res.status(404).json({ message: "Not found" });
+		return jsonOk(res, plan);
+	});
+
+	app.post("/api/plans", async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const data = insertPlanSchema.parse(req.body);
+			const created = await storage.createPlan(data);
+			return jsonOk(res, created, 201);
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.patch("/api/plans/:id", async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const updated = await storage.updatePlan(req.params.id, req.body ?? {});
+			if (!updated) return res.status(404).json({ message: "Not found" });
+			return jsonOk(res, updated);
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.delete("/api/plans/:id", async (req: Request, res: Response) => {
+		const ok = await storage.deletePlan(req.params.id);
+		if (!ok) return res.status(404).json({ message: "Not found" });
+		return res.status(204).end();
+	});
+
 
 	// health: verify DB connectivity quickly
 	app.get("/api/health", async (_req: Request, res: Response) => {

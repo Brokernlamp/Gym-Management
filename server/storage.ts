@@ -9,6 +9,8 @@ import {
   type InsertEquipment,
   type Attendance,
   type InsertAttendance,
+  type Plan,
+  type InsertPlan,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { getDb } from "./db";
@@ -51,6 +53,13 @@ export interface IStorage {
   getSettings(): Promise<Record<string, any>>;
   updateSettings(settings: Record<string, any>): Promise<Record<string, any>>;
   getMemberByLoginCode(loginCode: string): Promise<Member | undefined>;
+
+  // plans
+  listPlans(): Promise<Plan[]>;
+  getPlan(id: string): Promise<Plan | undefined>;
+  createPlan(plan: InsertPlan): Promise<Plan>;
+  updatePlan(id: string, plan: Partial<InsertPlan>): Promise<Plan | undefined>;
+  deletePlan(id: string): Promise<boolean>;
 }
 
 export class TursoStorage implements IStorage {
@@ -163,7 +172,28 @@ export class TursoStorage implements IStorage {
 
   async createMember(member: InsertMember): Promise<Member> {
     try {
-      const id = randomUUID();
+      // Generate readable member ID: member_001, member_002, etc.
+      let id = "member_001";
+      try {
+        const maxIdResult = await this.db.execute({
+          sql: `SELECT MAX(CAST(SUBSTR(id, 8) AS INTEGER)) as max_num FROM members WHERE id LIKE 'member_%'`,
+        });
+        const maxNum = maxIdResult.rows[0]?.max_num ? Number(maxIdResult.rows[0].max_num) : 0;
+        id = `member_${String(maxNum + 1).padStart(3, '0')}`;
+      } catch {
+        // If parsing fails, count total members and add 1
+        try {
+          const countResult = await this.db.execute({
+            sql: `SELECT COUNT(*) as total FROM members WHERE id LIKE 'member_%'`,
+          });
+          const total = countResult.rows[0]?.total ? Number(countResult.rows[0].total) : 0;
+          id = `member_${String(total + 1).padStart(3, '0')}`;
+        } catch {
+          // Fallback: use timestamp-based ID
+          id = `member_${Date.now().toString().slice(-6)}`;
+        }
+      }
+      
       console.log("Creating member:", id, member.name);
       const result = await this.db.execute({
         sql: `INSERT INTO members (
@@ -495,6 +525,109 @@ export class TursoStorage implements IStorage {
     });
     const row = result.rows[0];
     return row ? (this.mapMember(row) as any) : undefined;
+  }
+
+  // Plans CRUD
+  async listPlans(): Promise<Plan[]> {
+    try {
+      const result = await this.db.execute({
+        sql: `SELECT * FROM plans ORDER BY name`,
+      });
+      return result.rows.map((row: any) => this.mapPlan(row)) as Plan[];
+    } catch (error) {
+      console.error("listPlans error:", error);
+      return [];
+    }
+  }
+
+  async getPlan(id: string): Promise<Plan | undefined> {
+    const result = await this.db.execute({
+      sql: `SELECT * FROM plans WHERE id = ?`,
+      args: [id],
+    });
+    const row = result.rows[0];
+    return row ? (this.mapPlan(row) as any) : undefined;
+  }
+
+  private mapPlan(row: any): Plan {
+    return {
+      id: row.id,
+      name: row.name,
+      duration: Number(row.duration || 0),
+      price: String(row.price || "0"),
+      features: row.features ? (typeof row.features === 'string' ? JSON.parse(row.features) : row.features) : [],
+      isActive: Boolean(row.is_active ?? row.isActive ?? true),
+    };
+  }
+
+  async createPlan(plan: InsertPlan): Promise<Plan> {
+    try {
+      const id = `plan_${Date.now().toString().slice(-8)}`;
+      const featuresJson = plan.features ? JSON.stringify(plan.features) : null;
+      await this.db.execute({
+        sql: `INSERT INTO plans (id, name, duration, price, features, is_active) VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [
+          id,
+          plan.name,
+          plan.duration,
+          plan.price,
+          featuresJson,
+          plan.isActive !== undefined ? (plan.isActive ? 1 : 0) : 1,
+        ],
+      });
+      const created = await this.getPlan(id);
+      if (!created) throw new Error("Failed to retrieve created plan");
+      return created;
+    } catch (error) {
+      console.error("createPlan error:", error);
+      throw error;
+    }
+  }
+
+  async updatePlan(id: string, plan: Partial<InsertPlan>): Promise<Plan | undefined> {
+    const current = await this.getPlan(id);
+    if (!current) return undefined;
+    
+    const updates: string[] = [];
+    const args: any[] = [];
+    
+    if (plan.name !== undefined) {
+      updates.push("name = ?");
+      args.push(plan.name);
+    }
+    if (plan.duration !== undefined) {
+      updates.push("duration = ?");
+      args.push(plan.duration);
+    }
+    if (plan.price !== undefined) {
+      updates.push("price = ?");
+      args.push(plan.price);
+    }
+    if (plan.features !== undefined) {
+      updates.push("features = ?");
+      args.push(JSON.stringify(plan.features));
+    }
+    if (plan.isActive !== undefined) {
+      updates.push("is_active = ?");
+      args.push(plan.isActive ? 1 : 0);
+    }
+    
+    if (updates.length === 0) return current;
+    
+    args.push(id);
+    await this.db.execute({
+      sql: `UPDATE plans SET ${updates.join(", ")} WHERE id = ?`,
+      args,
+    });
+    return await this.getPlan(id);
+  }
+
+  async deletePlan(id: string): Promise<boolean> {
+    const result = await this.db.execute({
+      sql: `DELETE FROM plans WHERE id = ?`,
+      args: [id],
+    });
+    return (result.rowsAffected ?? 0) > 0;
   }
 }
 

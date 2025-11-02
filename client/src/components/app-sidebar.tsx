@@ -5,9 +5,9 @@ import {
   Calendar,
   Dumbbell,
   Wrench,
-  MessageSquare,
   BarChart3,
   Settings,
+  Package,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +35,11 @@ const menuItems = [
     icon: Users,
   },
   {
+    title: "Plans",
+    url: "/plans",
+    icon: Package,
+  },
+  {
     title: "Financial",
     url: "/financial",
     icon: CreditCard,
@@ -53,11 +58,6 @@ const menuItems = [
     title: "Equipment",
     url: "/equipment",
     icon: Wrench,
-  },
-  {
-    title: "WhatsApp",
-    url: "/whatsapp",
-    icon: MessageSquare,
   },
   {
     title: "Reports",

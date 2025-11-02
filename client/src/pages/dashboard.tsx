@@ -76,10 +76,20 @@ export default function Dashboard() {
     })
     .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
-  const pendingPayments = payments.filter((p: any) => 
+  // Get pending payments from payments table
+  const pendingPaymentsFromTable = payments.filter((p: any) => 
     p.status === "pending" || p.status === "overdue"
   );
-  const pendingAmount = pendingPayments.reduce((sum: number, p: any) => 
+  
+  // Also get members with pending payment status
+  const membersWithPendingStatus = members.filter((m: any) => 
+    (m.paymentStatus === "pending" || m.paymentStatus === "overdue") && 
+    !pendingPaymentsFromTable.find((p) => p.memberId === m.id)
+  );
+  
+  // Combine for total count
+  const allPendingPaymentsCount = pendingPaymentsFromTable.length + membersWithPendingStatus.length;
+  const pendingAmount = pendingPaymentsFromTable.reduce((sum: number, p: any) => 
     sum + Number(p.amount || 0), 0
   );
 
@@ -166,18 +176,28 @@ export default function Dashboard() {
       return a.time.localeCompare(b.time);
     });
 
-  // Pending payments with member names
-  const pendingPaymentsList = pendingPayments.slice(0, 10).map((p: any) => {
-    const member = memberById.get(p.memberId);
-    return {
-      id: p.id,
-      memberName: member?.name || p.memberId,
-      amount: Number(p.amount || 0),
-      dueDate: parseDate(p.dueDate),
-      status: p.status,
-      planName: p.planName || undefined,
-    };
-  });
+  // Pending payments with member names - combine from both sources
+  const pendingPaymentsList = [
+    ...pendingPaymentsFromTable.map((p: any) => {
+      const member = memberById.get(p.memberId);
+      return {
+        id: p.id,
+        memberName: member?.name || p.memberId,
+        amount: Number(p.amount || 0),
+        dueDate: parseDate(p.dueDate),
+        status: p.status,
+        planName: p.planName || undefined,
+      };
+    }),
+    ...membersWithPendingStatus.slice(0, 10 - pendingPaymentsFromTable.length).map((m: any) => ({
+      id: `member_pending_${m.id}`,
+      memberName: m.name,
+      amount: 0,
+      dueDate: parseDate(m.expiryDate),
+      status: m.paymentStatus,
+      planName: m.planName || undefined,
+    })),
+  ].slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -206,7 +226,7 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Pending Payments"
-          value={pendingPayments.length}
+          value={allPendingPaymentsCount}
           icon={AlertCircle}
           subtitle={`₹${pendingAmount.toLocaleString()} total due`}
         />

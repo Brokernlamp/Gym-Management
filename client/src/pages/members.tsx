@@ -14,11 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, UserPlus, Trash2, Edit } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -37,11 +37,17 @@ export default function Members() {
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
+  const { data: plans = [] } = useQuery({
+    queryKey: ["/api/plans"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
 
   const formSchema = z.object({
     name: z.string().min(2),
     email: z.string().email(),
     phone: z.string().min(6),
+    planId: z.string().optional(),
     status: z.enum(["active", "expired", "pending", "frozen"]).default("active"),
     paymentStatus: z.enum(["paid", "pending", "overdue"]).default("paid"),
   });
@@ -50,21 +56,38 @@ export default function Members() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { name: "", email: "", phone: "", status: "active", paymentStatus: "paid" },
+    defaultValues: { name: "", email: "", phone: "", planId: "", status: "active", paymentStatus: "paid" },
   });
 
   const createMember = useMutation({
     mutationFn: async (values: FormValues) => {
+      // Get selected plan
+      const selectedPlan = plans.find((p: any) => p.id === values.planId);
+      const startDate = new Date();
+      const expiryDate = selectedPlan 
+        ? new Date(startDate.getTime() + selectedPlan.duration * 24 * 60 * 60 * 1000)
+        : null;
+      
       await apiRequest("POST", "/api/members", {
         ...values,
         loginCode: String(Math.floor(Math.random() * 900000) + 100000),
+        planName: selectedPlan?.name,
+        startDate: startDate.toISOString(),
+        expiryDate: expiryDate?.toISOString(),
       });
     },
     onSuccess: async () => {
+      // Invalidate all related queries to ensure sync across pages
       await queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
       await queryClient.refetchQueries({ queryKey: ["/api/members"] });
       setOpen(false);
       form.reset();
+      toast({
+        title: "Member created",
+        description: "Member has been added successfully.",
+      });
     },
   });
 
@@ -322,6 +345,32 @@ export default function Members() {
                     <FormControl>
                       <Input placeholder="+91..." {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="planId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Membership Plan</FormLabel>
+                    <Select 
+                      value={field.value || undefined} 
+                      onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a plan (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Plan</SelectItem>
+                        {plans.filter((p: any) => p.isActive).map((plan: any) => (
+                          <SelectItem key={plan.id} value={plan.id}>
+                            {plan.name} - ₹{Number(plan.price).toLocaleString()} ({plan.duration} days)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

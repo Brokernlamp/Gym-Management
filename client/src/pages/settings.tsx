@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Building2, Clock, DollarSign, Users, MessageSquare, Save, Key } from "lucide-react";
+import { Building2, Clock, DollarSign, Users, Save, Key, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, getQueryFn, queryClient } from "@/lib/queryClient";
@@ -42,11 +42,6 @@ export default function Settings() {
     radius: "100",
   });
 
-  const [whatsappSettings, setWhatsappSettings] = useState({
-    apiKey: "",
-    autoReminders: true,
-    reminderDays: "3",
-  });
 
   const [paymentSettings, setPaymentSettings] = useState({
     razorpayKey: "",
@@ -82,11 +77,6 @@ export default function Settings() {
         longitude: settings.gpsLongitude || "",
         radius: settings.gpsRadius || "100",
       });
-      setWhatsappSettings({
-        apiKey: settings.whatsappApiKey || "",
-        autoReminders: settings.whatsappAutoReminders ?? true,
-        reminderDays: settings.whatsappReminderDays || "3",
-      });
       setPaymentSettings({
         razorpayKey: settings.razorpayKey || "",
         stripeKey: settings.stripeKey || "",
@@ -111,9 +101,6 @@ export default function Settings() {
         gpsLatitude: gpsSettings.latitude,
         gpsLongitude: gpsSettings.longitude,
         gpsRadius: gpsSettings.radius,
-        whatsappApiKey: whatsappSettings.apiKey,
-        whatsappAutoReminders: whatsappSettings.autoReminders,
-        whatsappReminderDays: whatsappSettings.reminderDays,
         razorpayKey: paymentSettings.razorpayKey,
         stripeKey: paymentSettings.stripeKey,
         taxRate: paymentSettings.taxRate,
@@ -142,9 +129,18 @@ export default function Settings() {
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground">Manage your gym configuration and preferences</p>
         </div>
-        <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} data-testid="button-save-settings">
-          <Save className="h-4 w-4 mr-2" />
-          {saveSettings.isPending ? "Saving..." : "Save Changes"}
+        <Button onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending} data-testid="button-save-settings" className="min-w-[140px]">
+          {saveSettings.isPending ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </>
+          )}
         </Button>
       </div>
 
@@ -355,65 +351,6 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            <CardTitle>WhatsApp Integration</CardTitle>
-          </div>
-          <CardDescription>Configure WhatsApp messaging automation</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="whatsapp-key">WhatsApp API Key</Label>
-            <Input
-              id="whatsapp-key"
-              type="password"
-              value={whatsappSettings.apiKey}
-              onChange={(e) =>
-                setWhatsappSettings({ ...whatsappSettings, apiKey: e.target.value })
-              }
-              data-testid="input-whatsapp-key"
-            />
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Automatic Payment Reminders</Label>
-              <p className="text-sm text-muted-foreground">
-                Send automated reminders before payment due dates
-              </p>
-            </div>
-            <Switch
-              checked={whatsappSettings.autoReminders}
-              onCheckedChange={(checked) =>
-                setWhatsappSettings({ ...whatsappSettings, autoReminders: checked })
-              }
-              data-testid="switch-auto-reminders"
-            />
-          </div>
-          {whatsappSettings.autoReminders && (
-            <div className="space-y-2">
-              <Label htmlFor="reminder-days">Send Reminder (Days Before Due)</Label>
-              <Select
-                value={whatsappSettings.reminderDays}
-                onValueChange={(value) =>
-                  setWhatsappSettings({ ...whatsappSettings, reminderDays: value })
-                }
-              >
-                <SelectTrigger id="reminder-days" data-testid="select-reminder-days">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 day</SelectItem>
-                  <SelectItem value="3">3 days</SelectItem>
-                  <SelectItem value="7">7 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>

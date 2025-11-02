@@ -10,6 +10,17 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT NOT NULL
 );
 
+-- Plans (must be created before members to allow foreign key reference)
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  duration INTEGER NOT NULL,
+  price NUMERIC NOT NULL,
+  features TEXT,  -- JSON string array
+  is_active INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_plans_active ON plans(is_active);
+
 -- Members
 CREATE TABLE IF NOT EXISTS members (
   id TEXT PRIMARY KEY,
@@ -29,10 +40,12 @@ CREATE TABLE IF NOT EXISTS members (
   trainer_id TEXT,
   notes TEXT,
   gender TEXT,
-  age INTEGER
+  age INTEGER,
+  FOREIGN KEY(plan_id) REFERENCES plans(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_members_email ON members(email);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
+CREATE INDEX IF NOT EXISTS idx_members_plan ON members(plan_id);
 
 -- Payments
 CREATE TABLE IF NOT EXISTS payments (
@@ -76,14 +89,10 @@ CREATE TABLE IF NOT EXISTS equipment (
 );
 CREATE INDEX IF NOT EXISTS idx_equipment_status ON equipment(status);
 
--- Plans (optional)
-CREATE TABLE IF NOT EXISTS plans (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  duration INTEGER NOT NULL,
-  price NUMERIC NOT NULL,
-  features TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1
+-- Settings (key-value store for gym configuration)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 -- Classes (optional)
@@ -111,6 +120,21 @@ CREATE TABLE IF NOT EXISTS trainers (
   certifications TEXT,
   rating REAL
 );
+
+-- WhatsApp Logs (for tracking sent messages via Google Sheets integration)
+-- This table stores metadata, actual logs go to Google Sheets
+CREATE TABLE IF NOT EXISTS whatsapp_logs (
+  id TEXT PRIMARY KEY,
+  member_id TEXT,
+  phone TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL,  -- 'sent', 'failed', 'pending'
+  sent_at TEXT NOT NULL,
+  error_message TEXT,
+  FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_logs_member ON whatsapp_logs(member_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_logs_sent_at ON whatsapp_logs(sent_at);
 
 -- Seed minimal data (optional)
 -- INSERT INTO members (id, name, email, phone, login_code, status, payment_status) VALUES

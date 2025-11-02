@@ -84,6 +84,10 @@ export default function Financial() {
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+  const { data: plans = [] } = useQuery({
+    queryKey: ["/api/plans"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
 
   // Parse dates safely
   const parseDate = (dateStr: any) => {
@@ -139,6 +143,8 @@ export default function Financial() {
   });
 
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
+  
+  // Filter pending payments - check payment status directly
   const pendingPayments = payments
     .filter((p: any) => p.status === "pending" || p.status === "overdue")
     .map((p: any) => ({
@@ -149,6 +155,21 @@ export default function Financial() {
       status: p.status,
       planName: p.planName ?? undefined,
     }));
+  
+  // Also add members with pending payment status who don't have payment records yet
+  const membersWithPendingPaymentStatus = members
+    .filter((m: any) => (m.paymentStatus === "pending" || m.paymentStatus === "overdue") && !pendingPayments.find((p) => memberById.get(p.memberId)?.id === m.id))
+    .map((m: any) => ({
+      id: `member_pending_${m.id}`,
+      memberName: m.name,
+      amount: 0, // Amount not specified yet
+      dueDate: m.expiryDate ? new Date(m.expiryDate) : undefined,
+      status: m.paymentStatus,
+      planName: m.planName ?? undefined,
+    }));
+  
+  // Combine both lists
+  const allPendingPayments = [...pendingPayments, ...membersWithPendingPaymentStatus];
 
   // Recent transactions - last 10 paid payments
   const recentTransactions = paidPayments
@@ -344,9 +365,9 @@ export default function Financial() {
         </CardHeader>
         <CardContent>
             <PaymentTable
-            payments={pendingPayments}
+            payments={allPendingPayments}
             onSendReminder={(id) => {
-              const payment = pendingPayments.find((p) => p.id === id);
+              const payment = allPendingPayments.find((p) => p.id === id);
               toast({
                 title: "Reminder sent",
                 description: payment ? `Payment reminder sent to ${payment.memberName}` : "Reminder sent",

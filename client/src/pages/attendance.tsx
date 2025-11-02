@@ -34,10 +34,26 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [memberSearchOpen, setMemberSearchOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: attendance = [] } = useQuery({
@@ -48,9 +64,12 @@ export default function Attendance() {
     queryKey: ["/api/members"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
-  const formSchema = z.object({ memberId: z.string().min(1) });
+  const formSchema = z.object({ memberId: z.string().min(1, "Please select a member") });
   type FormValues = z.infer<typeof formSchema>;
-  const form = useForm<FormValues>({ resolver: zodResolver(formSchema) });
+  const form = useForm<FormValues>({ 
+    resolver: zodResolver(formSchema),
+    defaultValues: { memberId: "" },
+  });
   const manualCheckin = useMutation({
     mutationFn: async (values: FormValues) => {
       await apiRequest("POST", "/api/attendance", { memberId: values.memberId, markedVia: "manual" });
@@ -62,6 +81,11 @@ export default function Attendance() {
       await queryClient.refetchQueries({ queryKey: ["/api/members"] });
       setOpen(false);
       form.reset();
+      setMemberSearchOpen(false);
+      toast({
+        title: "Check-in successful",
+        description: "Member attendance has been recorded.",
+      });
     },
   });
   const memberById = new Map(members.map((m: any) => [m.id, m] as const));
@@ -414,11 +438,60 @@ export default function Attendance() {
                 control={form.control}
                 name="memberId"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Member ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Member ID" {...field} />
-                    </FormControl>
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Member</FormLabel>
+                    <Popover open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value
+                              ? members.find((m: any) => m.id === field.value)?.name || `ID: ${field.value}`
+                              : "Search member by name or ID..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search member by name or ID..." />
+                          <CommandList>
+                            <CommandEmpty>No member found.</CommandEmpty>
+                            <CommandGroup>
+                              {members.map((member: any) => (
+                                <CommandItem
+                                  value={`${member.name} ${member.id} ${member.loginCode}`}
+                                  key={member.id}
+                                  onSelect={() => {
+                                    form.setValue("memberId", member.id);
+                                    setMemberSearchOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      member.id === field.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{member.name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      ID: {member.id} • Code: {member.loginCode}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <FormMessage />
                   </FormItem>
                 )}
