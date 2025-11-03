@@ -9,7 +9,8 @@ interface Equipment {
   name: string;
   category: string;
   status: "operational" | "maintenance" | "repair";
-  nextMaintenance: Date;
+  // Can be Date, string (ISO), or null depending on backend mapping
+  nextMaintenance: Date | string | null;
 }
 
 interface EquipmentStatusProps {
@@ -22,6 +23,23 @@ export function EquipmentStatus({ equipment, onScheduleMaintenance }: EquipmentS
     operational: "bg-chart-3 text-white",
     maintenance: "bg-chart-4 text-white",
     repair: "bg-destructive text-destructive-foreground",
+  };
+
+  // Safely parse and format dates coming from API
+  const parseDate = (value: unknown): Date | null => {
+    if (!value) return null;
+    try {
+      if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+      const d = new Date(value as any);
+      return isNaN(d.getTime()) ? null : d;
+    } catch {
+      return null;
+    }
+  };
+
+  const formatDate = (value: unknown): string => {
+    const d = parseDate(value);
+    return d ? format(d, "MMM dd, yyyy") : "—";
   };
 
   const needsAttention = equipment.filter(
@@ -54,7 +72,7 @@ export function EquipmentStatus({ equipment, onScheduleMaintenance }: EquipmentS
                   </Badge>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {item.category} • Next maintenance: {format(item.nextMaintenance, "MMM dd, yyyy")}
+                  {item.category} • Next maintenance: {formatDate(item.nextMaintenance)}
                 </div>
               </div>
               <Button

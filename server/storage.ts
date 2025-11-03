@@ -373,7 +373,9 @@ export class TursoStorage implements IStorage {
     const current = await this.db.execute({ sql: `SELECT * FROM equipment WHERE id = ?`, args: [id] });
     const cur = current.rows[0] as any;
     if (!cur) return undefined;
-    const updated = { ...cur, ...equipment } as any;
+    // Map DB row (snake_case) to camelCase before merging to avoid losing fields
+    const curMapped = this.mapEquipment(cur) as any;
+    const updated = { ...curMapped, ...equipment } as any;
     await this.db.execute({
       sql: `UPDATE equipment SET name=?, category=?, purchase_date=?, warranty_expiry=?, last_maintenance=?, next_maintenance=?, status=? WHERE id=?`,
       args: [
