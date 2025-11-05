@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: gym-admin-dashboard
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TURSO_DATABASE_URL
+        sync: false  # Set in Render dashboard
+      - key: TURSO_AUTH_TOKEN
+        sync: false  # Set in Render dashboard
+      - key: RENDER
+        value: "1"  # This flag enables Render-specific paths for WhatsApp auth
+      - key: PORT
+        value: "10000"  # Render uses PORT env var, default is 10000
+    healthCheckPath: /api/health
+    disk:
+      name: auth_storage
+      mountPath: /opt/render/project/src
+      sizeGB: 1  # Persistent disk for WhatsApp auth files
+

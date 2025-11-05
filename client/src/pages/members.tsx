@@ -89,6 +89,14 @@ export default function Members() {
         description: "Member has been added successfully.",
       });
     },
+    onError: (error: any) => {
+      console.error("Error creating member:", error);
+      toast({
+        title: "Error creating member",
+        description: error?.message || "Failed to create member. Please check the form and try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const editForm = useForm<FormValues>({

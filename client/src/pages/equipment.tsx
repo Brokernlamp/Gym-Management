@@ -11,6 +11,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useToast } from "@/hooks/use-toast";
 
 const equipmentFormSchema = z.object({
   name: z.string().min(1, "Equipment name is required"),
@@ -23,6 +24,7 @@ type EquipmentFormValues = z.infer<typeof equipmentFormSchema>;
 export default function Equipment() {
   const [open, setOpen] = useState(false);
   const [scheduleMaintenanceId, setScheduleMaintenanceId] = useState<string | null>(null);
+  const { toast } = useToast();
   
   const { data: equipment = [] } = useQuery({
     queryKey: ["/api/equipment"],
@@ -47,6 +49,14 @@ export default function Equipment() {
       await queryClient.refetchQueries({ queryKey: ["/api/equipment"] });
       setOpen(false);
       form.reset();
+    },
+    onError: (error: any) => {
+      console.error("Error creating equipment:", error);
+      toast({
+        title: "Error creating equipment",
+        description: error?.message || "Failed to create equipment. Please check the form and try again.",
+        variant: "destructive",
+      });
     },
   });
 

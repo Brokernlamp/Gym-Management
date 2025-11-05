@@ -29,9 +29,12 @@ try {
 
 // Session directory for storing auth state
 // Use /tmp on serverless platforms, otherwise use project directory
+// Render platform: use process.cwd() for persistent storage (disk persists across restarts)
 const AUTH_DIR = process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
   ? path.join("/tmp", "auth_info_baileys") // Use /tmp for serverless (Netlify, AWS Lambda)
-  : path.join(__dirname, "..", "auth_info_baileys"); // Use project directory for local/dev
+  : process.env.RENDER
+    ? path.join(process.cwd(), "auth_info_baileys") // Render: use working directory (persistent disk)
+    : path.join(__dirname, "..", "auth_info_baileys"); // Use project directory for local/dev
 
 // Connection state tracking
 export let isWAConnected = false;

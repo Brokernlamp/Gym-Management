@@ -78,8 +78,12 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    // Don't send response if headers already sent
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+    // Log error but don't throw (to avoid crashing the server)
+    console.error("Unhandled error:", err);
   });
 
   // Create HTTP server for local dev

@@ -13,7 +13,7 @@ import {
   type InsertPlan,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { getDb } from "./db";
+import { getDb } from "./db-factory";
 
 // modify the interface with any CRUD methods
 // you might need

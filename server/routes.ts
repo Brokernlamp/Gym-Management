@@ -3,13 +3,25 @@ import { storage } from "./storage";
 import { insertMemberSchema, insertPaymentSchema, insertEquipmentSchema, insertAttendanceSchema, settingsSchema, insertPlanSchema } from "@shared/schema";
 import { sendWhatsAppMessage, isWAConnected, currentQR, forceReconnect, disconnectWhatsApp } from "./whatsapp";
 import { calculateDaysLeft, formatPhoneNumber } from "./whatsapp-handlers";
-import { getDb } from "./db";
+import { getDb } from "./db-factory";
 import { randomUUID } from "crypto";
 import { syncMemberToGoogleSheets, removeMemberFromGoogleSheets } from "./google-sheets";
 
 export async function registerRoutes(app: Express): Promise<void> {
 	// helper
 	const jsonOk = (res: Response, body: unknown, status = 200) => res.status(status).json(body);
+
+	// Coercion helpers for API inputs (accept ISO strings or Date/null)
+	const toDateOrNull = (v: unknown): Date | null | undefined => {
+		if (v === undefined) return undefined;
+		if (v === null || v === "") return null;
+		if (v instanceof Date) return v;
+		if (typeof v === "string") {
+			const d = new Date(v);
+			return isNaN(d.getTime()) ? null : d;
+		}
+		return null;
+	};
 
 	// Simple test endpoint
 	app.get("/api/test", (_req: Request, res: Response) => {
@@ -31,8 +43,16 @@ app.get("/api/members", async (_req: Request, res: Response, next: NextFunction)
 
 app.post("/api/members", async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const data = insertMemberSchema.parse(req.body);
-		const created = await storage.createMember(data);
+			const body = req.body ?? {};
+			console.log("POST /api/members - Received body:", JSON.stringify(body));
+			// Coerce date-like fields from strings
+			body.startDate = toDateOrNull(body.startDate);
+			body.expiryDate = toDateOrNull(body.expiryDate);
+			body.lastCheckIn = toDateOrNull(body.lastCheckIn);
+			const data = insertMemberSchema.parse(body);
+			console.log("POST /api/members - Parsed data:", JSON.stringify(data));
+			const created = await storage.createMember(data);
+			console.log("POST /api/members - Created member:", created.id);
 		
 		// Sync to Google Sheets (non-blocking)
 		syncMemberToGoogleSheets(created).catch((err) => {
@@ -41,12 +61,19 @@ app.post("/api/members", async (req: Request, res: Response, next: NextFunction)
 		
 		return jsonOk(res, created, 201);
 		} catch (err) {
-			next(err);
+			console.error("POST /api/members - Error:", err);
+			const errorMessage = err instanceof Error ? err.message : "Failed to create member";
+			const statusCode = err && typeof err === 'object' && 'status' in err ? (err as any).status : 400;
+			return res.status(statusCode).json({ message: errorMessage, error: String(err) });
 		}
 	});
 
 app.patch("/api/members/:id", async (req: Request, res: Response) => {
-		const updated = await storage.updateMember(req.params.id, req.body ?? {});
+		const body = req.body ?? {};
+		body.startDate = toDateOrNull(body.startDate);
+		body.expiryDate = toDateOrNull(body.expiryDate);
+		body.lastCheckIn = toDateOrNull(body.lastCheckIn);
+		const updated = await storage.updateMember(req.params.id, body);
 		if (!updated) return res.status(404).json({ message: "Not found" });
 		
 		// Sync to Google Sheets (non-blocking)
@@ -83,11 +110,20 @@ app.get("/api/payments", async (_req: Request, res: Response) => {
 
 app.post("/api/payments", async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const data = insertPaymentSchema.parse(req.body);
-		const created = await storage.createPayment(data);
-		return jsonOk(res, created, 201);
+			const body = req.body ?? {};
+			console.log("POST /api/payments - Received body:", JSON.stringify(body));
+			body.dueDate = toDateOrNull(body.dueDate);
+			body.paidDate = toDateOrNull(body.paidDate);
+			const data = insertPaymentSchema.parse(body);
+			console.log("POST /api/payments - Parsed data:", JSON.stringify(data));
+			const created = await storage.createPayment(data);
+			console.log("POST /api/payments - Created payment:", created.id);
+			return jsonOk(res, created, 201);
 		} catch (err) {
-			next(err);
+			console.error("POST /api/payments - Error:", err);
+			const errorMessage = err instanceof Error ? err.message : "Failed to create payment";
+			const statusCode = err && typeof err === 'object' && 'status' in err ? (err as any).status : 400;
+			return res.status(statusCode).json({ message: errorMessage, error: String(err) });
 		}
 	});
 
@@ -111,11 +147,17 @@ app.get("/api/equipment", async (_req: Request, res: Response) => {
 
 app.post("/api/equipment", async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			console.log("POST /api/equipment - Received body:", JSON.stringify(req.body));
 			const data = insertEquipmentSchema.parse(req.body);
-		const created = await storage.createEquipment(data);
-		return jsonOk(res, created, 201);
+			console.log("POST /api/equipment - Parsed data:", JSON.stringify(data));
+			const created = await storage.createEquipment(data);
+			console.log("POST /api/equipment - Created equipment:", created.id);
+			return jsonOk(res, created, 201);
 		} catch (err) {
-			next(err);
+			console.error("POST /api/equipment - Error:", err);
+			const errorMessage = err instanceof Error ? err.message : "Failed to create equipment";
+			const statusCode = err && typeof err === 'object' && 'status' in err ? (err as any).status : 400;
+			return res.status(statusCode).json({ message: errorMessage, error: String(err) });
 		}
 	});
 
@@ -139,7 +181,10 @@ app.get("/api/attendance", async (_req: Request, res: Response) => {
 
 app.post("/api/attendance", async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const data = insertAttendanceSchema.parse(req.body);
+			const body = req.body ?? {};
+			body.checkInTime = toDateOrNull(body.checkInTime) ?? new Date();
+			body.checkOutTime = toDateOrNull(body.checkOutTime);
+			const data = insertAttendanceSchema.parse(body);
 		const created = await storage.createAttendance(data);
 		return jsonOk(res, created, 201);
 		} catch (err) {
@@ -206,11 +251,17 @@ app.delete("/api/attendance/:id", async (req: Request, res: Response) => {
 
 	app.post("/api/plans", async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			console.log("POST /api/plans - Received body:", JSON.stringify(req.body));
 			const data = insertPlanSchema.parse(req.body);
+			console.log("POST /api/plans - Parsed data:", JSON.stringify(data));
 			const created = await storage.createPlan(data);
+			console.log("POST /api/plans - Created plan:", created.id);
 			return jsonOk(res, created, 201);
 		} catch (err) {
-			next(err);
+			console.error("POST /api/plans - Error:", err);
+			const errorMessage = err instanceof Error ? err.message : "Failed to create plan";
+			const statusCode = err && typeof err === 'object' && 'status' in err ? (err as any).status : 400;
+			return res.status(statusCode).json({ message: errorMessage, error: String(err) });
 		}
 	});
 

@@ -10,6 +10,10 @@ let isInitialized = false;
  */
 export async function initGoogleSheets(): Promise<void> {
   try {
+    if (process.env.DESKTOP === "1" || process.env.ELECTRON === "1") {
+      console.log("🖥️ Desktop mode: skipping Google Sheets initialization");
+      return;
+    }
     const sheetId = process.env.GOOGLE_SHEET_ID?.trim();
     const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT?.trim();
 
